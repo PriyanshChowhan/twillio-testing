@@ -736,7 +736,7 @@ async function getLLMResponse(convo, streamSid) {
     console.log(`[${streamSid}] Sending prompt to LLM with conversation history:`, convo);
     
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
         const result = await model.generateContent([
             getSystemPrompt(callContext, emotionalState[streamSid]),
             ...convo.map(msg => msg.content).join('\n')
@@ -797,24 +797,21 @@ app.post("/start-therapeutic-call", express.json(), (req, res) => {
 
 // --- Twilio webhook ---
 app.post("/voice", (req, res) => {
-    const host = req.get('host') || process.env.PUBLIC_URL?.replace(/https?:\/\//, ''); 
-    const protocol = req.secure ? 'wss' : 'ws';
+    const host = process.env.PUBLIC_URL?.replace(/https?:\/\//, '') || req.get('host');
+    console.log(`[Twilio Voice Webhook] Host: ${host}`);
     
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
         <Start>
-            <Stream url="${protocol}://${host}/media" />
+            <Stream url="wss://${host}/media" />
         </Start>
         <Say voice="Polly.Joanna">
-            Hi, this is Dr. Sarah calling for a wellness check based on your vital signs. I noticed some concerning readings and wanted to make sure you're doing okay. How are you feeling right now?
+            Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
         </Say>
-        <Pause length="60"/>
-        <Gather input="speech" timeout="10" speechTimeout="2">
-            <Say voice="Polly.Joanna">I'm here to listen. Please tell me how you're doing.</Say>
-        </Gather>
+        <Pause length="120"/>
     </Response>`;
     
-    console.log(`[Twilio Voice Webhook] Call incoming, sending TwiML`);
+    console.log(`[Twilio Voice Webhook] Call incoming, WebSocket URL: wss://${host}/media`);
     res.type("text/xml").send(twiml);
 });
 
@@ -835,8 +832,8 @@ app.get("/trigger-call", async (req, res) => {
 });
 
 // --- WebSocket handler ---
-wss.on("connection", (ws) => {
-    console.log(`[WebSocket] Client connected`);
+wss.on("connection", (ws, req) => {
+    console.log(`[WebSocket] Client connected from ${req.url}`);
     let currentStreamSid = null;
     
     ws.on("message", async (msg) => {
@@ -845,7 +842,7 @@ wss.on("connection", (ws) => {
             const streamSid = data.streamSid || "default";
             currentStreamSid = streamSid;
 
-            console.log(`[${streamSid}] WebSocket message:`, data.event);
+            console.log(`[${streamSid}] WebSocket event: ${data.event}`, data);
 
             if (data.event === "start") {
                 activeConnections[streamSid] = ws;
@@ -854,26 +851,28 @@ wss.on("connection", (ws) => {
                 emotionalState[streamSid] = "NEUTRAL";
                 lastTranscriptTime[streamSid] = Date.now();
                 
+                console.log(`[${streamSid}] Stream started - WebSocket connected successfully`);
+                
                 if (callContext) {
                     callContext.status = 'connected';
                     // Auto-end call after 5 min
+                    if (callContext.timer) clearTimeout(callContext.timer);
                     callContext.timer = setTimeout(() => endCall(streamSid), 300 * 1000);
                 }
-
-                console.log(`[${streamSid}] Call started via WebSocket`);
             }
 
             if (data.event === "media") {
-                // Handle incoming audio data if needed
-                console.log(`[${streamSid}] Received media data`);
+                // Media frames received - connection is working
+                console.log(`[${streamSid}] Media frame received`);
             }
 
             if (data.event === "transcription") {
                 const transcriptionText = data.transcription?.text || "";
                 if (transcriptionText.trim()) {
-                    transcripts[streamSid] += " " + transcriptionText;
+                    transcripts[streamSid] = (transcripts[streamSid] || "") + " " + transcriptionText;
                     lastTranscriptTime[streamSid] = Date.now();
-                    console.log(`[${streamSid}] Transcription: "${transcriptionText}"`);
+                    console.log(`[${streamSid}] Transcription received: "${transcriptionText}"`);
+                    console.log(`[${streamSid}] Full transcript so far: "${transcripts[streamSid]}"`);
                 }
             }
 
@@ -883,6 +882,7 @@ wss.on("connection", (ws) => {
             }
         } catch (error) {
             console.error(`[WebSocket] Message parsing error:`, error);
+            console.error(`[WebSocket] Raw message:`, msg.toString());
         }
     });
 
@@ -899,17 +899,26 @@ wss.on("connection", (ws) => {
     });
 });
 
+// --- Add WebSocket endpoint for /media ---
+app.use('/media', (req, res, next) => {
+    console.log(`[Media Endpoint] Request received: ${req.method} ${req.url}`);
+    console.log(`[Media Endpoint] Headers:`, req.headers);
+    next();
+});
+
 // --- Pause-aware LLM responder ---
 setInterval(async () => {
     const now = Date.now();
     for (const streamSid in transcripts) {
-        if (!transcripts[streamSid] || !transcripts[streamSid].trim()) continue;
+        const transcript = transcripts[streamSid];
+        if (!transcript || !transcript.trim()) continue;
 
-        // If user paused for 3 seconds
-        if (now - (lastTranscriptTime[streamSid] || 0) > 3000) {
-            const text = transcripts[streamSid].trim();
+        // If user paused for 2 seconds and we have content
+        const timeSinceLastTranscript = now - (lastTranscriptTime[streamSid] || 0);
+        if (timeSinceLastTranscript > 2000) {
+            const text = transcript.trim();
             
-            console.log(`[${streamSid}] User paused, processing: "${text}"`);
+            console.log(`[${streamSid}] Processing speech after ${timeSinceLastTranscript}ms pause: "${text}"`);
             
             // Initialize conversation if empty
             if (!conversations[streamSid]) {
@@ -923,19 +932,26 @@ setInterval(async () => {
                 const reply = await getLLMResponse(conversations[streamSid], streamSid);
                 conversations[streamSid].push({ role: "assistant", content: reply });
 
-                // Send response back to Twilio
+                console.log(`[${streamSid}] Sending AI response: "${reply}"`);
+
+                // Send TTS response back to Twilio
                 const ws = activeConnections[streamSid];
                 if (ws && ws.readyState === ws.OPEN) {
-                    ws.send(JSON.stringify({ 
-                        event: "say", 
-                        streamSid, 
-                        text: reply 
-                    }));
+                    const response = {
+                        event: "say",
+                        streamSid: streamSid,
+                        text: reply
+                    };
+                    console.log(`[${streamSid}] Sending WebSocket response:`, response);
+                    ws.send(JSON.stringify(response));
+                } else {
+                    console.log(`[${streamSid}] WebSocket not available for response`);
                 }
 
                 // End call if user says they're okay
                 if (/i am (ok|okay|fine|good|alright)/i.test(text)) {
-                    setTimeout(() => endCall(streamSid), 2000); // Give time for response
+                    console.log(`[${streamSid}] User indicated they are okay, ending call`);
+                    setTimeout(() => endCall(streamSid), 3000); // Give time for response
                 }
             } catch (error) {
                 console.error(`[${streamSid}] Error processing response:`, error);
@@ -1021,7 +1037,26 @@ app.get("/health", (req, res) => {
         status: "healthy", 
         callResult,
         activeConnections: Object.keys(activeConnections).length,
-        callContext: callContext ? { status: callContext.status } : null
+        callContext: callContext ? { status: callContext.status } : null,
+        transcripts: Object.keys(transcripts),
+        conversations: Object.keys(conversations)
+    });
+});
+
+// --- Debug endpoint ---
+app.get("/debug", (req, res) => {
+    res.json({
+        activeConnections: Object.keys(activeConnections),
+        transcripts: transcripts,
+        conversations: conversations,
+        emotionalState: emotionalState,
+        callContext: callContext,
+        callResult: callResult,
+        environment: {
+            PUBLIC_URL: process.env.PUBLIC_URL,
+            TWILIO_NUMBER: process.env.TWILIO_NUMBER,
+            USER_NUMBER: process.env.USER_NUMBER
+        }
     });
 });
 
@@ -1052,5 +1087,10 @@ app.get("/test-vital-alert", (req, res) => {
 
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`WebSocket server ready for connections`);
+    console.log(`WebSocket server ready for connections at /media`);
+    console.log(`Environment check:`);
+    console.log(`- PUBLIC_URL: ${process.env.PUBLIC_URL}`);
+    console.log(`- TWILIO_NUMBER: ${process.env.TWILIO_NUMBER}`);
+    console.log(`- USER_NUMBER: ${process.env.USER_NUMBER}`);
+    console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'Set' : 'Not Set'}`);
 });
