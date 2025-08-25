@@ -672,6 +672,8 @@ import twilio from 'twilio';
 dotenv.config();
 
 const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;
@@ -803,15 +805,141 @@ app.post("/voice", (req, res) => {
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
         <Start>
+            <Stream url="wss://${host}/media">
+                <Parameter name="track" value="both_tracks" />
+            </Stream>
+        </Start>
+        <Say voice="Polly.Joanna">
+            Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
+        </Say>
+        <Gather input="speech" timeout="30" speechTimeout="auto" language="en-US" speechModel="phone_call">
+            <Say voice="Polly.Joanna">Please tell me how you're doing.</Say>
+        </Gather>
+        <Redirect>/voice-continue</Redirect>
+    </Response>`;
+    
+    console.log(`[Twilio Voice Webhook] Call incoming, WebSocket URL: wss://${host}/media`);
+    res.type("text/xml").send(twiml);
+});
+
+// --- Twilio webhook ---
+app.post("/voice", (req, res) => {
+    const host = process.env.PUBLIC_URL?.replace(/https?:\/\//, '') || req.get('host');
+    console.log(`[Twilio Voice Webhook] Host: ${host}`);
+    
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Start>
             <Stream url="wss://${host}/media" />
         </Start>
         <Say voice="Polly.Joanna">
             Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
         </Say>
-        <Pause length="120"/>
+        <Gather input="speech" timeout="5" speechTimeout="2" language="en-US" action="/process-speech" method="POST">
+            <Say voice="Polly.Joanna">Please tell me how you're doing.</Say>
+        </Gather>
+        <Redirect>/voice-timeout</Redirect>
     </Response>`;
     
     console.log(`[Twilio Voice Webhook] Call incoming, WebSocket URL: wss://${host}/media`);
+    res.type("text/xml").send(twiml);
+});
+
+// --- Process speech ---
+app.post("/process-speech", express.urlencoded({extended: false}), async (req, res) => {
+    const speechResult = req.body.SpeechResult || "";
+    const callSid = req.body.CallSid;
+    
+    console.log(`[Process Speech] Call: ${callSid}, Speech: "${speechResult}"`);
+    
+    if (!speechResult.trim()) {
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">I didn't catch that. Could you please repeat?</Say>
+            <Gather input="speech" timeout="5" speechTimeout="2" language="en-US" action="/process-speech" method="POST">
+                <Say voice="Polly.Joanna">How are you feeling?</Say>
+            </Gather>
+            <Redirect>/voice-timeout</Redirect>
+        </Response>`;
+        return res.type("text/xml").send(twiml);
+    }
+    
+    // Process with AI
+    try {
+        if (!conversations[callSid]) {
+            conversations[callSid] = [];
+            emotionalState[callSid] = "NEUTRAL";
+        }
+        
+        conversations[callSid].push({ role: "user", content: speechResult });
+        const aiResponse = await getLLMResponse(conversations[callSid], callSid);
+        conversations[callSid].push({ role: "assistant", content: aiResponse });
+        
+        console.log(`[Process Speech] AI Response: "${aiResponse}"`);
+        
+        // Check if user is okay
+        if (/i am (ok|okay|fine|good|alright)/i.test(speechResult)) {
+            const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+            <Response>
+                <Say voice="Polly.Joanna">${aiResponse}</Say>
+                <Say voice="Polly.Joanna">Thank you for talking with me. Take care!</Say>
+                <Hangup/>
+            </Response>`;
+            return res.type("text/xml").send(twiml);
+        }
+        
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">${aiResponse}</Say>
+            <Gather input="speech" timeout="10" speechTimeout="3" language="en-US" action="/process-speech" method="POST">
+                <Say voice="Polly.Joanna">Is there anything else you'd like to share?</Say>
+            </Gather>
+            <Redirect>/voice-timeout</Redirect>
+        </Response>`;
+        
+        res.type("text/xml").send(twiml);
+        
+    } catch (error) {
+        console.error(`[Process Speech] Error:`, error);
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">I'm having trouble processing that. Could you try again?</Say>
+            <Gather input="speech" timeout="5" speechTimeout="2" language="en-US" action="/process-speech" method="POST">
+                <Say voice="Polly.Joanna">How are you feeling?</Say>
+            </Gather>
+            <Hangup/>
+        </Response>`;
+        res.type("text/xml").send(twiml);
+    }
+});
+
+// --- Handle timeout ---
+app.post("/voice-timeout", (req, res) => {
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Say voice="Polly.Joanna">I haven't heard from you. Are you still there?</Say>
+        <Gather input="speech" timeout="5" speechTimeout="2" language="en-US" action="/process-speech" method="POST">
+            <Say voice="Polly.Joanna">Please let me know how you're doing.</Say>
+        </Gather>
+        <Say voice="Polly.Joanna">I'll check on you again later. Take care!</Say>
+        <Hangup/>
+    </Response>`;
+    res.type("text/xml").send(twiml);
+});
+
+// --- Voice continue handler ---
+app.post("/voice-continue", (req, res) => {
+    const speechResult = req.body.SpeechResult;
+    console.log(`[Voice Continue] Speech result: "${speechResult}"`);
+    
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Gather input="speech" timeout="30" speechTimeout="auto" language="en-US" speechModel="phone_call">
+            <Say voice="Polly.Joanna">I'm listening. Please continue.</Say>
+        </Gather>
+        <Redirect>/voice-continue</Redirect>
+    </Response>`;
+    
     res.type("text/xml").send(twiml);
 });
 
