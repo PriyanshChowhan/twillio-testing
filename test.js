@@ -661,10 +661,8 @@
 
 // server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-
 import express from 'express';
 import http from 'http';
-import { WebSocketServer } from 'ws';
 import dotenv from 'dotenv';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import twilio from 'twilio';
@@ -675,7 +673,6 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -686,10 +683,7 @@ const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 let callContext = null;
 let callResult = null;
 const conversations = {};
-const transcripts = {};
 const emotionalState = {};
-const lastTranscriptTime = {}; // Track last transcription timestamp
-const activeConnections = {}; // Track WebSocket connections by streamSid
 
 // --- Generate vitals context ---
 function generateVitalsContext(vitals, alertType) {
@@ -734,30 +728,30 @@ Keep responses concise but thorough (2-3 sentences max per response).`;
 };
 
 // --- Get LLM response ---
-async function getLLMResponse(convo, streamSid) {
-    console.log(`[${streamSid}] Sending prompt to LLM with conversation history:`, convo);
+async function getLLMResponse(convo, callSid) {
+    console.log(`[${callSid}] Sending prompt to LLM with conversation history:`, convo);
     
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const result = await model.generateContent([
-            getSystemPrompt(callContext, emotionalState[streamSid]),
+            getSystemPrompt(callContext, emotionalState[callSid]),
             ...convo.map(msg => msg.content).join('\n')
         ]);
         
         const reply = result.response.text();
-        console.log(`[${streamSid}] LLM replied: ${reply}`);
+        console.log(`[${callSid}] LLM replied: ${reply}`);
 
-        await updateEmotionalState(convo, streamSid);
-        console.log(`[${streamSid}] Updated emotional state: ${emotionalState[streamSid]}`);
+        await updateEmotionalState(convo, callSid);
+        console.log(`[${callSid}] Updated emotional state: ${emotionalState[callSid]}`);
         return reply;
     } catch (error) {
-        console.error(`[${streamSid}] LLM Error:`, error);
+        console.error(`[${callSid}] LLM Error:`, error);
         return "I understand you're speaking with me. Could you please repeat what you just said?";
     }
 }
 
 // --- Update emotional state ---
-async function updateEmotionalState(convo, streamSid) {
+async function updateEmotionalState(convo, callSid) {
     const lastUser = convo.filter(m => m.role === "user").pop();
     if (!lastUser) return;
 
@@ -774,13 +768,13 @@ POSITIVE`;
         const state = result.response.text().trim();
         
         if (["SEVERELY_DEPRESSED", "MILDLY_DEPRESSED", "NEUTRAL", "POSITIVE"].includes(state)) {
-            emotionalState[streamSid] = state;
+            emotionalState[callSid] = state;
         } else {
-            emotionalState[streamSid] = "NEUTRAL";
+            emotionalState[callSid] = "NEUTRAL";
         }
     } catch (error) {
-        console.error(`[${streamSid}] Emotional state update error:`, error);
-        emotionalState[streamSid] = "NEUTRAL";
+        console.error(`[${callSid}] Emotional state update error:`, error);
+        emotionalState[callSid] = "NEUTRAL";
     }
 }
 
@@ -797,89 +791,93 @@ app.post("/start-therapeutic-call", express.json(), (req, res) => {
     res.json({ success: true, vitalsContext: vitalsContext.concernText });
 });
 
-// --- Twilio webhook ---
+// --- Main Twilio voice webhook ---
 app.post("/voice", (req, res) => {
-    const host = process.env.PUBLIC_URL?.replace(/https?:\/\//, '') || req.get('host');
-    console.log(`[Twilio Voice Webhook] Host: ${host}`);
+    const callSid = req.body.CallSid;
+    console.log(`[Twilio Voice Webhook] Call incoming. SID: ${callSid}`);
+    
+    // Initialize conversation for this call
+    if (!conversations[callSid]) {
+        conversations[callSid] = [];
+        emotionalState[callSid] = "NEUTRAL";
+    }
     
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
-        <Start>
-            <Stream url="wss://${host}/media">
-                <Parameter name="track" value="both_tracks" />
-            </Stream>
-        </Start>
         <Say voice="Polly.Joanna">
             Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
         </Say>
-        <Gather input="speech" timeout="30" speechTimeout="auto" language="en-US" speechModel="phone_call">
-            <Say voice="Polly.Joanna">Please tell me how you're doing.</Say>
+        <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
+            <Say voice="Polly.Joanna">Please tell me how you're doing today.</Say>
         </Gather>
-        <Redirect>/voice-continue</Redirect>
+        <Redirect>/voice-timeout</Redirect>
     </Response>`;
     
-    console.log(`[Twilio Voice Webhook] Call incoming, WebSocket URL: wss://${host}/media`);
     res.type("text/xml").send(twiml);
 });
 
-// --- Twilio webhook ---
-// app.post("/voice", (req, res) => {
-//     console.log(`[Twilio Voice Webhook] Call incoming`);
-    
-//     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-//     <Response>
-//         <Say voice="Polly.Joanna">
-//             Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
-//         </Say>
-//         <Gather input="speech" timeout="10" speechTimeout="3" language="en-US" action="/process-speech" method="POST">
-//         </Gather>
-//         <Redirect>/voice-timeout</Redirect>
-//     </Response>`;
-    
-//     res.type("text/xml").send(twiml);
-// });
-
-// --- Process speech ---
+// --- Process speech input ---
 app.post("/process-speech", express.urlencoded({extended: false}), async (req, res) => {
     const speechResult = req.body.SpeechResult || "";
     const callSid = req.body.CallSid;
     
     console.log(`[Process Speech] Call: ${callSid}, Speech: "${speechResult}"`);
-    console.log(`[Process Speech] Full request body:`, req.body);
     
     if (!speechResult.trim()) {
         console.log(`[Process Speech] No speech detected, prompting again`);
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Say voice="Polly.Joanna">I didn't catch that. Could you please tell me how you're feeling?</Say>
-            <Gather input="speech" timeout="10" speechTimeout="3" language="en-US" action="/process-speech" method="POST">
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
             </Gather>
             <Redirect>/voice-timeout</Redirect>
         </Response>`;
         return res.type("text/xml").send(twiml);
     }
     
-    // Process with AI
     try {
+        // Initialize conversation if it doesn't exist
         if (!conversations[callSid]) {
             conversations[callSid] = [];
             emotionalState[callSid] = "NEUTRAL";
         }
         
+        // Add user message and get AI response
         conversations[callSid].push({ role: "user", content: speechResult });
         const aiResponse = await getLLMResponse(conversations[callSid], callSid);
         conversations[callSid].push({ role: "assistant", content: aiResponse });
         
         console.log(`[Process Speech] AI Response: "${aiResponse}"`);
         
-        // Check if user indicates they're okay - end call
-        if (/i am (ok|okay|fine|good|alright|well)/i.test(speechResult)) {
+        // Check conversation length - end after 6-8 exchanges to keep calls reasonable
+        const conversationLength = conversations[callSid].length;
+        
+        // Check if user indicates they're okay or conversation is getting long
+        if (/\b(i am|i'm|im)\s+(ok|okay|fine|good|alright|well|better)\b/i.test(speechResult) || conversationLength >= 12) {
             const twiml = `<?xml version="1.0" encoding="UTF-8"?>
             <Response>
                 <Say voice="Polly.Joanna">${aiResponse}</Say>
-                <Say voice="Polly.Joanna">I'm glad to hear you're doing well. Thank you for talking with me. Take care!</Say>
+                <Say voice="Polly.Joanna">I'm glad we could talk today. Please take care of yourself, and don't hesitate to reach out if you need support. Goodbye!</Say>
                 <Hangup/>
             </Response>`;
+            
+            // End the call and cleanup
+            endCall(callSid);
+            return res.type("text/xml").send(twiml);
+        }
+        
+        // Check for emergency situations
+        if (emotionalState[callSid] === "SEVERELY_DEPRESSED" || 
+            /\b(hurt|harm|suicide|kill|die|end it all)\b/i.test(speechResult)) {
+            
+            const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+            <Response>
+                <Say voice="Polly.Joanna">${aiResponse}</Say>
+                <Say voice="Polly.Joanna">I'm concerned about what you've shared. Please consider calling 988, the Suicide and Crisis Lifeline, or go to your nearest emergency room. You don't have to go through this alone.</Say>
+                <Hangup/>
+            </Response>`;
+            
+            endCall(callSid);
             return res.type("text/xml").send(twiml);
         }
         
@@ -887,7 +885,7 @@ app.post("/process-speech", express.urlencoded({extended: false}), async (req, r
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Say voice="Polly.Joanna">${aiResponse}</Say>
-            <Gather input="speech" timeout="10" speechTimeout="3" language="en-US" action="/process-speech" method="POST">
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
             </Gather>
             <Redirect>/voice-timeout</Redirect>
         </Response>`;
@@ -899,7 +897,7 @@ app.post("/process-speech", express.urlencoded({extended: false}), async (req, r
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Say voice="Polly.Joanna">I'm having trouble processing that. Let me try again - how are you feeling today?</Say>
-            <Gather input="speech" timeout="10" speechTimeout="3" language="en-US" action="/process-speech" method="POST">
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
             </Gather>
             <Redirect>/voice-timeout</Redirect>
         </Response>`;
@@ -909,15 +907,24 @@ app.post("/process-speech", express.urlencoded({extended: false}), async (req, r
 
 // --- Handle timeout ---
 app.post("/voice-timeout", (req, res) => {
-    console.log(`[Voice Timeout] User didn't respond`);
+    const callSid = req.body.CallSid;
+    console.log(`[Voice Timeout] User didn't respond. Call: ${callSid}`);
+    
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
         <Say voice="Polly.Joanna">I haven't heard from you in a while. Are you still there?</Say>
-        <Gather input="speech" timeout="5" speechTimeout="2" language="en-US" action="/process-speech" method="POST">
+        <Gather input="speech" timeout="10" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
+            <Say voice="Polly.Joanna">Please let me know if you're okay.</Say>
         </Gather>
-        <Say voice="Polly.Joanna">I'll check back with you later. Please take care of yourself.</Say>
+        <Say voice="Polly.Joanna">I'll check back with you later. Please take care of yourself, and remember that support is available if you need it.</Say>
         <Hangup/>
     </Response>`;
+    
+    // End the call after timeout
+    if (callSid) {
+        endCall(callSid);
+    }
+    
     res.type("text/xml").send(twiml);
 });
 
@@ -937,7 +944,7 @@ app.get("/trigger-call", async (req, res) => {
     }
 });
 
-// --- Health check ---
+// --- End call and cleanup ---
 function endCall(callSid) {
     console.log(`[${callSid}] Ending call...`);
     
@@ -950,7 +957,8 @@ function endCall(callSid) {
         status: 'completed', 
         outcome: finalState, 
         finalState,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        conversationLength: conversations[callSid] ? conversations[callSid].length : 0
     };
 
     // Cleanup
@@ -958,7 +966,7 @@ function endCall(callSid) {
     delete emotionalState[callSid];
     
     if (callContext) {
-        callContext = null;
+        callContext.status = 'completed';
     }
 
     console.log(`[${callSid}] Call ended with outcome: ${finalState}`);
@@ -970,7 +978,8 @@ app.get("/health", (req, res) => {
         status: "healthy", 
         callResult,
         activeConversations: Object.keys(conversations).length,
-        callContext: callContext ? { status: callContext.status } : null
+        callContext: callContext ? { status: callContext.status } : null,
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -984,7 +993,10 @@ app.get("/debug", (req, res) => {
         environment: {
             PUBLIC_URL: process.env.PUBLIC_URL,
             TWILIO_NUMBER: process.env.TWILIO_NUMBER,
-            USER_NUMBER: process.env.USER_NUMBER
+            USER_NUMBER: process.env.USER_NUMBER,
+            GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'Set' : 'Not Set',
+            TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Not Set',
+            TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'
         }
     });
 });
@@ -1014,6 +1026,35 @@ app.get("/test-vital-alert", (req, res) => {
     });
 });
 
+// --- Trigger call with vital data ---
+app.post("/trigger-therapeutic-call", express.json(), async (req, res) => {
+    const { phoneNumber } = req.body;
+    const targetNumber = phoneNumber || process.env.USER_NUMBER;
+    
+    if (!targetNumber) {
+        return res.status(400).json({ error: "No phone number provided" });
+    }
+    
+    try {
+        const call = await client.calls.create({
+            url: `${process.env.PUBLIC_URL}/voice`,
+            from: process.env.TWILIO_NUMBER,
+            to: targetNumber
+        });
+        
+        console.log(`[Trigger Therapeutic Call] Call initiated to ${targetNumber}. SID: ${call.sid}`);
+        res.json({ 
+            success: true, 
+            callSid: call.sid, 
+            phoneNumber: targetNumber,
+            message: "Therapeutic call initiated"
+        });
+    } catch (err) {
+        console.error(`[Trigger Therapeutic Call Error]`, err);
+        res.status(500).json({ error: "Failed to initiate call", details: err.message });
+    }
+});
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Twilio voice webhook ready at /voice`);
@@ -1022,4 +1063,6 @@ server.listen(PORT, () => {
     console.log(`- TWILIO_NUMBER: ${process.env.TWILIO_NUMBER}`);
     console.log(`- USER_NUMBER: ${process.env.USER_NUMBER}`);
     console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'Set' : 'Not Set'}`);
+    console.log(`- TWILIO_ACCOUNT_SID: ${process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Not Set'}`);
+    console.log(`- TWILIO_AUTH_TOKEN: ${process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'}`);
 });
