@@ -121,6 +121,7 @@ app.post("/voice", (req, res) => {
     <Say voice="Polly.Joanna">
       Hi, this is your AI assistant. How can I help you today?
     </Say>
+    <Pause length="300"/> 
   </Response>`;
   res.type("text/xml").send(twiml);
 });
@@ -151,7 +152,7 @@ wss.on("connection", (ws) => {
       callContext.status = 'connected';
       conversations[streamSid] = [];
       emotionalState[streamSid] = "NEUTRAL";
-      callContext.timer = setTimeout(() => endCall(streamSid), 60 * 1000);
+      callContext.timer = setTimeout(() => endCall(streamSid), 300 * 1000);
     }
 
     if (data.event === "transcription") {
