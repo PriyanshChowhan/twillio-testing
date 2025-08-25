@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "localtunnel": "^2.0.2",
+    "ngrok": "^5.0.0-beta.2",
+    "twilio": "^5.8.0",
+    "ws": "^8.18.3"
+  },
+  "type": "module",
+  "name": "twillio-calling",
+  "version": "1.0.0",
+  "main": "test.js",
+  "scripts": {
+    "start": "node test.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}
