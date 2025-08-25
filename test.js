@@ -823,27 +823,27 @@ app.post("/voice", (req, res) => {
 });
 
 // --- Twilio webhook ---
-app.post("/voice", (req, res) => {
-    const host = process.env.PUBLIC_URL?.replace(/https?:\/\//, '') || req.get('host');
-    console.log(`[Twilio Voice Webhook] Host: ${host}`);
+// app.post("/voice", (req, res) => {
+//     const host = process.env.PUBLIC_URL?.replace(/https?:\/\//, '') || req.get('host');
+//     console.log(`[Twilio Voice Webhook] Host: ${host}`);
     
-    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-        <Start>
-            <Stream url="wss://${host}/media" />
-        </Start>
-        <Say voice="Polly.Joanna">
-            Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
-        </Say>
-        <Gather input="speech" timeout="5" speechTimeout="2" language="en-US" action="/process-speech" method="POST">
-            <Say voice="Polly.Joanna">Please tell me how you're doing.</Say>
-        </Gather>
-        <Redirect>/voice-timeout</Redirect>
-    </Response>`;
+//     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+//     <Response>
+//         <Start>
+//             <Stream url="wss://${host}/media" />
+//         </Start>
+//         <Say voice="Polly.Joanna">
+//             Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
+//         </Say>
+//         <Gather input="speech" timeout="5" speechTimeout="2" language="en-US" action="/process-speech" method="POST">
+//             <Say voice="Polly.Joanna">Please tell me how you're doing.</Say>
+//         </Gather>
+//         <Redirect>/voice-timeout</Redirect>
+//     </Response>`;
     
-    console.log(`[Twilio Voice Webhook] Call incoming, WebSocket URL: wss://${host}/media`);
-    res.type("text/xml").send(twiml);
-});
+//     console.log(`[Twilio Voice Webhook] Call incoming, WebSocket URL: wss://${host}/media`);
+//     res.type("text/xml").send(twiml);
+// });
 
 // --- Process speech ---
 app.post("/process-speech", express.urlencoded({extended: false}), async (req, res) => {
