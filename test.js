@@ -1,434 +1,5 @@
-// // import express from 'express';
-// // import http from 'http';
-// // import { WebSocketServer } from 'ws';
-// // import dotenv from 'dotenv';
-// // import { GoogleGenerativeAI } from "@google/generative-ai";
-// // import twilio from 'twilio';
-
-// // const app = express();
-// // const server = http.createServer(app);
-// // const wss = new WebSocketServer({ server });
-// // const PORT = process.env.PORT || 3000;
-// // const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
-// // // Twilio client
-// // const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
-// // // --- In-memory storage ---
-// // let callContext = null;
-// // let callResult = null;
-// // const conversations = {};
-// // const transcripts = {};
-// // const emotionalState = {};
-
-// // // --- Generate vitals context ---
-// // function generateVitalsContext(vitals, alertType) {
-// //   const { heart_rate, spo2, stress_level } = vitals;
-// //   let concerns = [];
-// //   if (alertType === "high_alert") {
-// //     if (heart_rate > 110 || heart_rate < 50) concerns.push(`HR=${heart_rate}`);
-// //     if (spo2 < 93) concerns.push(`SpO2=${spo2}%`);
-// //     if (stress_level > 60) concerns.push(`Stress=${stress_level}`);
-// //   }
-// //   return { 
-// //     concernText: concerns.join(" and ") || "vital sign changes", 
-// //     severity: alertType === "high_alert" ? "severe" : "moderate" 
-// //   };
-// // }
-
-// // // --- Build system prompt ---
-// // const getSystemPrompt = (context, currentEmotionalState) => {
-// //     const { concernText, severity } = context.vitalsContext;
-
-// //     return `You are Dr. Sarah, a licensed therapist working with a patient monitoring system. You've been automatically contacted because the patient's biometric monitoring system detected concerning vital signs.
-
-// // ALERT CONTEXT: 
-// // - Specific Concerns: ${concernText}
-
-// // CURRENT EMOTIONAL ASSESSMENT: ${currentEmotionalState || 'Initial assessment pending'}
-
-// // THERAPEUTIC APPROACH:
-// // - This is an emergency wellness check triggered by vital sign alerts
-// // - Be professionally concerned but not alarmist
-// // - Acknowledge the specific vital signs that triggered this call
-// // - Assess if the vital changes correlate with emotional/psychological distress
-// // - Use gentle probing to understand what might be causing these physiological changes
-// // - Look for connections between physical symptoms and mental state
-
-// // CONVERSATION STYLE:
-// // - Start by explaining this is an automated wellness check due to concerning vitals
-// // - Be specific about what the monitoring detected: "${concernText}"
-// // - Ask about current activities, stressors, or events that might explain the vital changes
-// // - Assess both physical comfort and emotional wellbeing
-// // - If severe distress is detected, guide toward immediate care resources
-
-// // Keep responses concise but thorough (2-3 sentences max per response).`;
-// // };
-// // // --- Get LLM response ---
-// // async function getLLMResponse(convo, streamSid) {
-// //   const prompt = [
-// //     { role: "system", content: getSystemPrompt(callContext, emotionalState[streamSid]) },
-// //     ...convo
-// //   ].map(m => `${m.role}: ${m.content}`).join("\n");
-
-// //   const result = await genAI.generateContent(prompt);
-// //   const reply = (await result.response).text();
-
-// //   await updateEmotionalState(convo, streamSid);
-// //   return reply;
-// // }
-
-// // // --- Update emotional state ---
-// // async function updateEmotionalState(convo, streamSid) {
-// //   const lastUser = convo.filter(m => m.role === "user").pop();
-// //   if (!lastUser) return;
-
-// //   const prompt = `Given the user's response: "${lastUser.content}", 
-// // Respond with ONLY:
-// // {"emotional_state": "SEVERELY_DEPRESSED|MILDLY_DEPRESSED|NEUTRAL|POSITIVE"}`;
-
-// //   try {
-// //     const result = await genAI.generateContent(prompt);
-// //     const state = (await result.response).text().trim();
-// //     emotionalState[streamSid] = ["SEVERELY_DEPRESSED", "MILDLY_DEPRESSED", "NEUTRAL", "POSITIVE"].includes(state)
-// //       ? state
-// //       : "NEUTRAL";
-// //   } catch {
-// //     emotionalState[streamSid] = "NEUTRAL";
-// //   }
-// // }
-
-// // // --- Start therapeutic call ---
-// // app.post("/start-therapeutic-call", express.json(), (req, res) => {
-// //   const { vitalData, alertType, phoneNumber } = req.body;
-// //   if (!vitalData || !alertType) return res.status(400).json({ error: "Missing fields" });
-
-// //   const vitalsContext = generateVitalsContext(vitalData, alertType);
-// //   callContext = { vitalData, alertType, vitalsContext, phoneNumber, status: 'initiated' };
-// //   callResult = { status: 'initiated', outcome: null, finalState: null };
-
-// //   res.json({ success: true, vitalsContext: vitalsContext.concernText });
-// // });
-
-// // // --- Twilio webhook ---
-// // app.post("/voice", (req, res) => {
-// //   const host = process.env.PUBLIC_URL; // Railway URL
-// //   const twiml = `
-// //   <Response>
-// //     <Start>
-// //       <Stream url="wss://${host}/media" />
-// //     </Start>
-// //     <Say voice="Polly.Joanna">
-// //       Hi, this is your AI assistant. How can I help you today?
-// //     </Say>
-// //     <Pause length="300"/> 
-// //   </Response>`;
-// //   res.type("text/xml").send(twiml);
-// // });
-
-// // // --- Trigger outbound call ---
-// // app.get("/trigger-call", async (req, res) => {
-// //   try {
-// //     const call = await client.calls.create({
-// //       url: `${process.env.PUBLIC_URL}/voice`,
-// //       from: process.env.TWILIO_NUMBER,
-// //       to: process.env.USER_NUMBER
-// //     });
-// //     res.send(`Call started! SID: ${call.sid}`);
-// //   } catch (err) {
-// //     console.error(err);
-// //     res.status(500).send("Failed to initiate call");
-// //   }
-// // });
-
-// // // --- WebSocket handler ---
-// // wss.on("connection", (ws) => {
-// //   ws.on("message", async (msg) => {
-// //     const data = JSON.parse(msg.toString());
-// //     const streamSid = data.streamSid || "default";
-
-// //     if (data.event === "start") {
-// //       transcripts[streamSid] = "";
-// //       callContext.status = 'connected';
-// //       conversations[streamSid] = [];
-// //       emotionalState[streamSid] = "NEUTRAL";
-// //       callContext.timer = setTimeout(() => endCall(streamSid), 300 * 1000);
-// //     }
-
-// //     if (data.event === "transcription") {
-// //       transcripts[streamSid] += " " + (data.transcription?.text || "");
-// //     }
-
-// //     if (data.event === "transcription_completed") {
-// //       const text = transcripts[streamSid].trim();
-// //       if (!text) return;
-
-// //       conversations[streamSid].push({ role: "user", content: text });
-
-// //       if (/i am ok/i.test(text)) {
-// //         return endCall(streamSid);
-// //       }
-
-// //       const reply = await getLLMResponse(conversations[streamSid], streamSid);
-// //       conversations[streamSid].push({ role: "assistant", content: reply });
-// //       ws.send(JSON.stringify({ event: "say", streamSid, text: reply }));
-// //       transcripts[streamSid] = "";
-// //     }
-
-// //     if (data.event === "stop") {
-// //       endCall(streamSid);
-// //     }
-// //   });
-// // });
-
-// // // --- End call ---
-// // function endCall(streamSid) {
-// //   if (!callContext) return;
-// //   if (callContext.timer) clearTimeout(callContext.timer);
-
-// //   const finalState = emotionalState[streamSid] || "NEUTRAL";
-// //   callResult = { status: 'completed', outcome: finalState, finalState };
-
-// //   delete transcripts[streamSid];
-// //   delete conversations[streamSid];
-// //   delete emotionalState[streamSid];
-// //   callContext = null;
-
-// //   console.log(`[${streamSid}] Call ended with outcome: ${finalState}`);
-// // }
-
-// // // --- Health check ---
-// // app.get("/health", (req, res) => res.json({ status: "healthy", callResult }));
-
-// // server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
-// // import express from 'express';
-// // import http from 'http';
-// // import { WebSocketServer } from 'ws';
-// // import dotenv from 'dotenv';
-// // import { GoogleGenerativeAI } from "@google/generative-ai";
-// // import twilio from 'twilio';
-
-// // dotenv.config();
-
-// // const app = express();
-// // const server = http.createServer(app);
-// // const wss = new WebSocketServer({ server });
-// // const PORT = process.env.PORT || 3000;
-// // const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
-// // // Twilio client
-// // const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
-// // // --- In-memory storage ---
-// // let callContext = null;
-// // let callResult = null;
-// // const conversations = {};
-// // const transcripts = {};
-// // const emotionalState = {};
-// // const lastTranscriptTime = {}; // Track last transcription timestamp
-
-// // // --- Generate vitals context ---
-// // function generateVitalsContext(vitals, alertType) {
-// //     const { heart_rate, spo2, stress_level } = vitals;
-// //     let concerns = [];
-// //     if (alertType === "high_alert") {
-// //         if (heart_rate > 110 || heart_rate < 50) concerns.push(`HR=${heart_rate}`);
-// //         if (spo2 < 93) concerns.push(`SpO2=${spo2}%`);
-// //         if (stress_level > 60) concerns.push(`Stress=${stress_level}`);
-// //     }
-// //     return { 
-// //         concernText: concerns.join(" and ") || "vital sign changes", 
-// //         severity: alertType === "high_alert" ? "severe" : "moderate" 
-// //     };
-// // }
-
-// // // --- Build system prompt ---
-// // const getSystemPrompt = (context, currentEmotionalState) => {
-// //     const { concernText } = context.vitalsContext;
-// //     return `You are Dr. Sarah, a licensed therapist working with a patient monitoring system. 
-// // ALERT CONTEXT: 
-// // - Specific Concerns: ${concernText}
-
-// // CURRENT EMOTIONAL ASSESSMENT: ${currentEmotionalState || 'Initial assessment pending'}
-
-// // THERAPEUTIC APPROACH:
-// // - This is an emergency wellness check triggered by vital sign alerts
-// // - Be professionally concerned but not alarmist
-// // - Acknowledge the specific vital signs that triggered this call
-// // - Assess if the vital changes correlate with emotional/psychological distress
-// // - Use gentle probing to understand what might be causing these physiological changes
-// // - Look for connections between physical symptoms and mental state
-
-// // CONVERSATION STYLE:
-// // - Start by explaining this is an automated wellness check due to concerning vitals
-// // - Be specific about what the monitoring detected: "${concernText}"
-// // - Ask about current activities, stressors, or events that might explain the vital changes
-// // - Assess both physical comfort and emotional wellbeing
-// // - If severe distress is detected, guide toward immediate care resources
-
-// // Keep responses concise but thorough (2-3 sentences max per response).`;
-// // };
-
-// // // --- Get LLM response ---
-// // async function getLLMResponse(convo, streamSid) {
-// //     const result = await genAI.generateContent({
-// //         model: "gemini-2.5-flash",
-// //         messages: [
-// //             { role: "system", content: getSystemPrompt(callContext, emotionalState[streamSid]) },
-// //             ...convo
-// //         ]
-// //     });
-// //     const reply = (await result.response).text();
-
-// //     await updateEmotionalState(convo, streamSid);
-// //     return reply;
-// // }
-
-// // // --- Update emotional state ---
-// // async function updateEmotionalState(convo, streamSid) {
-// //     const lastUser = convo.filter(m => m.role === "user").pop();
-// //     if (!lastUser) return;
-
-// //     const prompt = `Given the user's response: "${lastUser.content}", 
-// // Respond with ONLY:
-// // {"emotional_state": "SEVERELY_DEPRESSED|MILDLY_DEPRESSED|NEUTRAL|POSITIVE"}`;
-
-// //     try {
-// //         const result = await genAI.generateContent({ model: "gemini-2", messages: [{ role: "user", content: prompt }] });
-// //         const state = (await result.response).text().trim();
-// //         emotionalState[streamSid] = ["SEVERELY_DEPRESSED", "MILDLY_DEPRESSED", "NEUTRAL", "POSITIVE"].includes(state)
-// //             ? state
-// //             : "NEUTRAL";
-// //     } catch {
-// //         emotionalState[streamSid] = "NEUTRAL";
-// //     }
-// // }
-
-// // // --- Start therapeutic call ---
-// // app.post("/start-therapeutic-call", express.json(), (req, res) => {
-// //     const { vitalData, alertType, phoneNumber } = req.body;
-// //     if (!vitalData || !alertType) return res.status(400).json({ error: "Missing fields" });
-
-// //     const vitalsContext = generateVitalsContext(vitalData, alertType);
-// //     callContext = { vitalData, alertType, vitalsContext, phoneNumber, status: 'initiated' };
-// //     callResult = { status: 'initiated', outcome: null, finalState: null };
-
-// //     res.json({ success: true, vitalsContext: vitalsContext.concernText });
-// // });
-
-// // // --- Twilio webhook ---
-// // app.post("/voice", (req, res) => {
-// //     const host = process.env.PUBLIC_URL; 
-// //     const twiml = `
-// //     <Response>
-// //       <Start>
-// //         <Stream url="wss://${host}/media" />
-// //       </Start>
-// //       <Say voice="Polly.Joanna">
-// //         Hi, this is your AI assistant. How can I help you today?
-// //       </Say>
-// //       <Pause length="300"/>
-// //     </Response>`;
-// //     res.type("text/xml").send(twiml);
-// // });
-
-// // // --- Trigger outbound call ---
-// // app.get("/trigger-call", async (req, res) => {
-// //     try {
-// //         const call = await client.calls.create({
-// //             url: `${process.env.PUBLIC_URL}/voice`,
-// //             from: process.env.TWILIO_NUMBER,
-// //             to: process.env.USER_NUMBER
-// //         });
-// //         res.send(`Call started! SID: ${call.sid}`);
-// //     } catch (err) {
-// //         console.error(err);
-// //         res.status(500).send("Failed to initiate call");
-// //     }
-// // });
-
-// // // --- WebSocket handler ---
-// // wss.on("connection", (ws) => {
-// //     ws.on("message", async (msg) => {
-// //         const data = JSON.parse(msg.toString());
-// //         const streamSid = data.streamSid || "default";
-
-// //         if (data.event === "start") {
-// //             transcripts[streamSid] = "";
-// //             conversations[streamSid] = [];
-// //             emotionalState[streamSid] = "NEUTRAL";
-// //             lastTranscriptTime[streamSid] = Date.now();
-// //             callContext.status = 'connected';
-
-// //             // Auto-end call after 5 min
-// //             callContext.timer = setTimeout(() => endCall(streamSid), 300 * 1000);
-// //         }
-
-// //         if (data.event === "transcription") {
-// //             transcripts[streamSid] += " " + (data.transcription?.text || "");
-// //             lastTranscriptTime[streamSid] = Date.now();
-// //         }
-
-// //         if (data.event === "stop") {
-// //             endCall(streamSid);
-// //         }
-// //     });
-// // });
-
-// // // --- Pause-aware LLM responder ---
-// // setInterval(async () => {
-// //     const now = Date.now();
-// //     for (const streamSid in transcripts) {
-// //         if (!transcripts[streamSid]) continue;
-
-// //         // If user paused for 2 seconds
-// //         if (now - (lastTranscriptTime[streamSid] || 0) > 2000) {
-// //             const text = transcripts[streamSid].trim();
-// //             if (!text) continue;
-
-// //             conversations[streamSid].push({ role: "user", content: text });
-// //             transcripts[streamSid] = "";
-
-// //             const reply = await getLLMResponse(conversations[streamSid], streamSid);
-// //             conversations[streamSid].push({ role: "assistant", content: reply });
-
-// //             wss.clients.forEach(ws => {
-// //                 ws.send(JSON.stringify({ event: "say", streamSid, text: reply }));
-// //             });
-
-// //             // End call if user says "I am ok"
-// //             if (/i am ok/i.test(text)) endCall(streamSid);
-// //         }
-// //     }
-// // }, 500);
-
-// // // --- End call ---
-// // function endCall(streamSid) {
-// //     if (!callContext) return;
-// //     if (callContext.timer) clearTimeout(callContext.timer);
-
-// //     const finalState = emotionalState[streamSid] || "NEUTRAL";
-// //     callResult = { status: 'completed', outcome: finalState, finalState };
-
-// //     delete transcripts[streamSid];
-// //     delete conversations[streamSid];
-// //     delete emotionalState[streamSid];
-// //     delete lastTranscriptTime[streamSid];
-// //     callContext = null;
-
-// //     console.log(`[${streamSid}] Call ended with outcome: ${finalState}`);
-// // }
-
-// // // --- Health check ---
-// // app.get("/health", (req, res) => res.json({ status: "healthy", callResult }));
-
-// // server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
 // import express from 'express';
 // import http from 'http';
-// import { WebSocketServer } from 'ws';
 // import dotenv from 'dotenv';
 // import { GoogleGenerativeAI } from "@google/generative-ai";
 // import twilio from 'twilio';
@@ -436,8 +7,9 @@
 // dotenv.config();
 
 // const app = express();
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: false }));
 // const server = http.createServer(app);
-// const wss = new WebSocketServer({ server });
 // const PORT = process.env.PORT || 3000;
 // const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -448,9 +20,7 @@
 // let callContext = null;
 // let callResult = null;
 // const conversations = {};
-// const transcripts = {};
 // const emotionalState = {};
-// const lastTranscriptTime = {}; // Track last transcription timestamp
 
 // // --- Generate vitals context ---
 // function generateVitalsContext(vitals, alertType) {
@@ -469,10 +39,10 @@
 
 // // --- Build system prompt ---
 // const getSystemPrompt = (context, currentEmotionalState) => {
-//     const { concernText } = context.vitalsContext;
+//     const contextText = context?.vitalsContext?.concernText || "wellness check";
 //     return `You are Dr. Sarah, a licensed therapist working with a patient monitoring system. 
 // ALERT CONTEXT: 
-// - Specific Concerns: ${concernText}
+// - Specific Concerns: ${contextText}
 
 // CURRENT EMOTIONAL ASSESSMENT: ${currentEmotionalState || 'Initial assessment pending'}
 
@@ -486,7 +56,7 @@
 
 // CONVERSATION STYLE:
 // - Start by explaining this is an automated wellness check due to concerning vitals
-// - Be specific about what the monitoring detected: "${concernText}"
+// - Be specific about what the monitoring detected: "${contextText}"
 // - Ask about current activities, stressors, or events that might explain the vital changes
 // - Assess both physical comfort and emotional wellbeing
 // - If severe distress is detected, guide toward immediate care resources
@@ -495,40 +65,53 @@
 // };
 
 // // --- Get LLM response ---
-// async function getLLMResponse(convo, streamSid) {
-//     console.log(`[${streamSid}] Sending prompt to LLM with conversation history:`, convo);
-//     const result = await genAI.generateContent({
-//         model: "gemini-2.5-flash",
-//         messages: [
-//             { role: "system", content: getSystemPrompt(callContext, emotionalState[streamSid]) },
-//             ...convo
-//         ]
-//     });
-//     const reply = (await result.response).text();
-//     console.log(`[${streamSid}] LLM replied: ${reply}`);
+// async function getLLMResponse(convo, callSid) {
+//     console.log(`[${callSid}] Sending prompt to LLM with conversation history:`, convo);
+    
+//     try {
+//         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+//         const result = await model.generateContent([
+//             getSystemPrompt(callContext, emotionalState[callSid]),
+//             ...convo.map(msg => msg.content).join('\n')
+//         ]);
+        
+//         const reply = result.response.text();
+//         console.log(`[${callSid}] LLM replied: ${reply}`);
 
-//     await updateEmotionalState(convo, streamSid);
-//     console.log(`[${streamSid}] Updated emotional state: ${emotionalState[streamSid]}`);
-//     return reply;
+//         await updateEmotionalState(convo, callSid);
+//         console.log(`[${callSid}] Updated emotional state: ${emotionalState[callSid]}`);
+//         return reply;
+//     } catch (error) {
+//         console.error(`[${callSid}] LLM Error:`, error);
+//         return "I understand you're speaking with me. Could you please repeat what you just said?";
+//     }
 // }
 
 // // --- Update emotional state ---
-// async function updateEmotionalState(convo, streamSid) {
+// async function updateEmotionalState(convo, callSid) {
 //     const lastUser = convo.filter(m => m.role === "user").pop();
 //     if (!lastUser) return;
 
 //     const prompt = `Given the user's response: "${lastUser.content}", 
-// Respond with ONLY:
-// {"emotional_state": "SEVERELY_DEPRESSED|MILDLY_DEPRESSED|NEUTRAL|POSITIVE"}`;
+// Respond with ONLY one of these options:
+// SEVERELY_DEPRESSED
+// MILDLY_DEPRESSED  
+// NEUTRAL
+// POSITIVE`;
 
 //     try {
-//         const result = await genAI.generateContent({ model: "gemini-2", messages: [{ role: "user", content: prompt }] });
-//         const state = (await result.response).text().trim();
-//         emotionalState[streamSid] = ["SEVERELY_DEPRESSED", "MILDLY_DEPRESSED", "NEUTRAL", "POSITIVE"].includes(state)
-//             ? state
-//             : "NEUTRAL";
-//     } catch {
-//         emotionalState[streamSid] = "NEUTRAL";
+//         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+//         const result = await model.generateContent(prompt);
+//         const state = result.response.text().trim();
+        
+//         if (["SEVERELY_DEPRESSED", "MILDLY_DEPRESSED", "NEUTRAL", "POSITIVE"].includes(state)) {
+//             emotionalState[callSid] = state;
+//         } else {
+//             emotionalState[callSid] = "NEUTRAL";
+//         }
+//     } catch (error) {
+//         console.error(`[${callSid}] Emotional state update error:`, error);
+//         emotionalState[callSid] = "NEUTRAL";
 //     }
 // }
 
@@ -545,20 +128,140 @@
 //     res.json({ success: true, vitalsContext: vitalsContext.concernText });
 // });
 
-// // --- Twilio webhook ---
+// // --- Main Twilio voice webhook ---
 // app.post("/voice", (req, res) => {
-//     const host = process.env.PUBLIC_URL; 
-//     const twiml = `
+//     const callSid = req.body.CallSid;
+//     console.log(`[Twilio Voice Webhook] Call incoming. SID: ${callSid}`);
+    
+//     // Initialize conversation for this call
+//     if (!conversations[callSid]) {
+//         conversations[callSid] = [];
+//         emotionalState[callSid] = "NEUTRAL";
+//     }
+    
+//     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 //     <Response>
-//       <Start>
-//         <Stream url="wss://${host}/media" />
-//       </Start>
-//       <Say voice="Polly.Joanna">
-//         Hi, this is your AI assistant. How can I help you today?
-//       </Say>
-//       <Pause length="300"/>
+//         <Say voice="Polly.Joanna">
+//             Hi, this is Dr. Sarah calling for a wellness check. How are you feeling right now?
+//         </Say>
+//         <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
+//             <Say voice="Polly.Joanna">Please tell me how you're doing today.</Say>
+//         </Gather>
+//         <Redirect>/voice-timeout</Redirect>
 //     </Response>`;
-//     console.log(`[Twilio Voice Webhook] Call incoming`);
+    
+//     res.type("text/xml").send(twiml);
+// });
+
+// // --- Process speech input ---
+// app.post("/process-speech", express.urlencoded({extended: false}), async (req, res) => {
+//     const speechResult = req.body.SpeechResult || "";
+//     const callSid = req.body.CallSid;
+    
+//     console.log(`[Process Speech] Call: ${callSid}, Speech: "${speechResult}"`);
+    
+//     if (!speechResult.trim()) {
+//         console.log(`[Process Speech] No speech detected, prompting again`);
+//         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+//         <Response>
+//             <Say voice="Polly.Joanna">I didn't catch that. Could you please tell me how you're feeling?</Say>
+//             <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
+//             </Gather>
+//             <Redirect>/voice-timeout</Redirect>
+//         </Response>`;
+//         return res.type("text/xml").send(twiml);
+//     }
+    
+//     try {
+//         // Initialize conversation if it doesn't exist
+//         if (!conversations[callSid]) {
+//             conversations[callSid] = [];
+//             emotionalState[callSid] = "NEUTRAL";
+//         }
+        
+//         // Add user message and get AI response
+//         conversations[callSid].push({ role: "user", content: speechResult });
+//         const aiResponse = await getLLMResponse(conversations[callSid], callSid);
+//         conversations[callSid].push({ role: "assistant", content: aiResponse });
+        
+//         console.log(`[Process Speech] AI Response: "${aiResponse}"`);
+        
+//         // Check conversation length - end after 6-8 exchanges to keep calls reasonable
+//         const conversationLength = conversations[callSid].length;
+        
+//         // Check if user indicates they're okay or conversation is getting long
+//         if (/\b(i am|i'm|im)\s+(ok|okay|fine|good|alright|well|better)\b/i.test(speechResult) || conversationLength >= 12) {
+//             const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+//             <Response>
+//                 <Say voice="Polly.Joanna">${aiResponse}</Say>
+//                 <Say voice="Polly.Joanna">I'm glad we could talk today. Please take care of yourself, and don't hesitate to reach out if you need support. Goodbye!</Say>
+//                 <Hangup/>
+//             </Response>`;
+            
+//             // End the call and cleanup
+//             endCall(callSid);
+//             return res.type("text/xml").send(twiml);
+//         }
+        
+//         // Check for emergency situations
+//         if (emotionalState[callSid] === "SEVERELY_DEPRESSED" || 
+//             /\b(hurt|harm|suicide|kill|die|end it all)\b/i.test(speechResult)) {
+            
+//             const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+//             <Response>
+//                 <Say voice="Polly.Joanna">${aiResponse}</Say>
+//                 <Say voice="Polly.Joanna">I'm concerned about what you've shared. Please consider calling 988, the Suicide and Crisis Lifeline, or go to your nearest emergency room. You don't have to go through this alone.</Say>
+//                 <Hangup/>
+//             </Response>`;
+            
+//             endCall(callSid);
+//             return res.type("text/xml").send(twiml);
+//         }
+        
+//         // Continue conversation
+//         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+//         <Response>
+//             <Say voice="Polly.Joanna">${aiResponse}</Say>
+//             <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
+//             </Gather>
+//             <Redirect>/voice-timeout</Redirect>
+//         </Response>`;
+        
+//         res.type("text/xml").send(twiml);
+        
+//     } catch (error) {
+//         console.error(`[Process Speech] Error:`, error);
+//         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+//         <Response>
+//             <Say voice="Polly.Joanna">I'm having trouble processing that. Let me try again - how are you feeling today?</Say>
+//             <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
+//             </Gather>
+//             <Redirect>/voice-timeout</Redirect>
+//         </Response>`;
+//         res.type("text/xml").send(twiml);
+//     }
+// });
+
+// // --- Handle timeout ---
+// app.post("/voice-timeout", (req, res) => {
+//     const callSid = req.body.CallSid;
+//     console.log(`[Voice Timeout] User didn't respond. Call: ${callSid}`);
+    
+//     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+//     <Response>
+//         <Say voice="Polly.Joanna">I haven't heard from you in a while. Are you still there?</Say>
+//         <Gather input="speech" timeout="10" speechTimeout="auto" language="en-US" action="/process-speech" method="POST">
+//             <Say voice="Polly.Joanna">Please let me know if you're okay.</Say>
+//         </Gather>
+//         <Say voice="Polly.Joanna">I'll check back with you later. Please take care of yourself, and remember that support is available if you need it.</Say>
+//         <Hangup/>
+//     </Response>`;
+    
+//     // End the call after timeout
+//     if (callSid) {
+//         endCall(callSid);
+//     }
+    
 //     res.type("text/xml").send(twiml);
 // });
 
@@ -578,88 +281,129 @@
 //     }
 // });
 
-// // --- WebSocket handler ---
-// wss.on("connection", (ws) => {
-//     console.log(`[WebSocket] Client connected`);
-//     ws.on("message", async (msg) => {
-//         const data = JSON.parse(msg.toString());
-//         const streamSid = data.streamSid || "default";
+// // --- End call and cleanup ---
+// function endCall(callSid) {
+//     console.log(`[${callSid}] Ending call...`);
+    
+//     if (callContext && callContext.timer) {
+//         clearTimeout(callContext.timer);
+//     }
 
-//         if (data.event === "start") {
-//             transcripts[streamSid] = "";
-//             conversations[streamSid] = [];
-//             emotionalState[streamSid] = "NEUTRAL";
-//             lastTranscriptTime[streamSid] = Date.now();
-//             callContext.status = 'connected';
+//     const finalState = emotionalState[callSid] || "NEUTRAL";
+//     callResult = { 
+//         status: 'completed', 
+//         outcome: finalState, 
+//         finalState,
+//         timestamp: new Date().toISOString(),
+//         conversationLength: conversations[callSid] ? conversations[callSid].length : 0
+//     };
 
-//             console.log(`[${streamSid}] Call started via WebSocket`);
+//     // Cleanup
+//     delete conversations[callSid];
+//     delete emotionalState[callSid];
+    
+//     if (callContext) {
+//         callContext.status = 'completed';
+//     }
 
-//             // Auto-end call after 5 min
-//             callContext.timer = setTimeout(() => endCall(streamSid), 300 * 1000);
-//         }
+//     console.log(`[${callSid}] Call ended with outcome: ${finalState}`);
+// }
 
-//         if (data.event === "transcription") {
-//             transcripts[streamSid] += " " + (data.transcription?.text || "");
-//             lastTranscriptTime[streamSid] = Date.now();
-//             console.log(`[${streamSid}] Received transcription chunk: "${data.transcription?.text || ''}"`);
-//         }
+// // --- Health check ---
+// app.get("/health", (req, res) => {
+//     res.json({ 
+//         status: "healthy", 
+//         callResult,
+//         activeConversations: Object.keys(conversations).length,
+//         callContext: callContext ? { status: callContext.status } : null,
+//         timestamp: new Date().toISOString()
+//     });
+// });
 
-//         if (data.event === "stop") {
-//             console.log(`[${streamSid}] Stop event received`);
-//             endCall(streamSid);
+// // --- Debug endpoint ---
+// app.get("/debug", (req, res) => {
+//     res.json({
+//         conversations: conversations,
+//         emotionalState: emotionalState,
+//         callContext: callContext,
+//         callResult: callResult,
+//         environment: {
+//             PUBLIC_URL: process.env.PUBLIC_URL,
+//             TWILIO_NUMBER: process.env.TWILIO_NUMBER,
+//             USER_NUMBER: process.env.USER_NUMBER,
+//             GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'Set' : 'Not Set',
+//             TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Not Set',
+//             TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'
 //         }
 //     });
 // });
 
-// // --- Pause-aware LLM responder ---
-// setInterval(async () => {
-//     const now = Date.now();
-//     for (const streamSid in transcripts) {
-//         if (!transcripts[streamSid]) continue;
+// // --- Test endpoint to simulate vital alerts ---
+// app.get("/test-vital-alert", (req, res) => {
+//     const testVitalData = {
+//         heart_rate: 120,
+//         spo2: 88,
+//         stress_level: 75
+//     };
+    
+//     const vitalsContext = generateVitalsContext(testVitalData, "high_alert");
+//     callContext = { 
+//         vitalData: testVitalData, 
+//         alertType: "high_alert", 
+//         vitalsContext, 
+//         phoneNumber: process.env.USER_NUMBER, 
+//         status: 'initiated' 
+//     };
+//     callResult = { status: 'initiated', outcome: null, finalState: null };
 
-//         // If user paused for 2 seconds
-//         if (now - (lastTranscriptTime[streamSid] || 0) > 2000) {
-//             const text = transcripts[streamSid].trim();
-//             if (!text) continue;
+//     res.json({ 
+//         message: "Test vital alert set", 
+//         vitalsContext: vitalsContext.concernText,
+//         callContext: callContext
+//     });
+// });
 
-//             console.log(`[${streamSid}] User paused, sending chunk to LLM: "${text}"`);
-//             conversations[streamSid].push({ role: "user", content: text });
-//             transcripts[streamSid] = "";
-
-//             const reply = await getLLMResponse(conversations[streamSid], streamSid);
-//             conversations[streamSid].push({ role: "assistant", content: reply });
-
-//             wss.clients.forEach(ws => {
-//                 ws.send(JSON.stringify({ event: "say", streamSid, text: reply }));
-//             });
-
-//             // End call if user says "I am ok"
-//             if (/i am ok/i.test(text)) endCall(streamSid);
-//         }
+// // --- Trigger call with vital data ---
+// app.post("/trigger-therapeutic-call", express.json(), async (req, res) => {
+//     const { phoneNumber } = req.body;
+//     const targetNumber = phoneNumber || process.env.USER_NUMBER;
+    
+//     if (!targetNumber) {
+//         return res.status(400).json({ error: "No phone number provided" });
 //     }
-// }, 500);
+    
+//     try {
+//         const call = await client.calls.create({
+//             url: `${process.env.PUBLIC_URL}/voice`,
+//             from: process.env.TWILIO_NUMBER,
+//             to: targetNumber
+//         });
+        
+//         console.log(`[Trigger Therapeutic Call] Call initiated to ${targetNumber}. SID: ${call.sid}`);
+//         res.json({ 
+//             success: true, 
+//             callSid: call.sid, 
+//             phoneNumber: targetNumber,
+//             message: "Therapeutic call initiated"
+//         });
+//     } catch (err) {
+//         console.error(`[Trigger Therapeutic Call Error]`, err);
+//         res.status(500).json({ error: "Failed to initiate call", details: err.message });
+//     }
+// });
 
-// // --- End call ---
-// function endCall(streamSid) {
-//     if (!callContext) return;
-//     if (callContext.timer) clearTimeout(callContext.timer);
+// server.listen(PORT, () => {
+//     console.log(`Server running on port ${PORT}`);
+//     console.log(`Twilio voice webhook ready at /voice`);
+//     console.log(`Environment check:`);
+//     console.log(`- PUBLIC_URL: ${process.env.PUBLIC_URL}`);
+//     console.log(`- TWILIO_NUMBER: ${process.env.TWILIO_NUMBER}`);
+//     console.log(`- USER_NUMBER: ${process.env.USER_NUMBER}`);
+//     console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'Set' : 'Not Set'}`);
+//     console.log(`- TWILIO_ACCOUNT_SID: ${process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Not Set'}`);
+//     console.log(`- TWILIO_AUTH_TOKEN: ${process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'}`);
+// });
 
-//     const finalState = emotionalState[streamSid] || "NEUTRAL";
-//     callResult = { status: 'completed', outcome: finalState, finalState };
-
-//     delete transcripts[streamSid];
-//     delete conversations[streamSid];
-//     delete emotionalState[streamSid];
-//     delete lastTranscriptTime[streamSid];
-//     callContext = null;
-
-//     console.log(`[${streamSid}] Call ended with outcome: ${finalState}`);
-// }
-
-// // --- Health check ---
-// app.get("/health", (req, res) => res.json({ status: "healthy", callResult }));
-
-// server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 import express from 'express';
 import http from 'http';
@@ -684,6 +428,7 @@ let callContext = null;
 let callResult = null;
 const conversations = {};
 const emotionalState = {};
+const familyConversations = {}; // New: Store family conversations separately
 
 // --- Generate vitals context ---
 function generateVitalsContext(vitals, alertType) {
@@ -727,6 +472,32 @@ CONVERSATION STYLE:
 Keep responses concise but thorough (2-3 sentences max per response).`;
 };
 
+// --- NEW: Build family notification system prompt ---
+const getFamilySystemPrompt = (patientName, emotionalState, vitalsContext) => {
+    return `You are Dr. Sarah, a licensed therapist calling to inform a family member about their loved one's current mental health status following a wellness check.
+
+PATIENT INFORMATION:
+- Patient Name: ${patientName || "your family member"}
+- Current Mental State: ${emotionalState}
+- Vital Signs Concern: ${vitalsContext || "concerning vital signs"}
+
+PROFESSIONAL APPROACH:
+- You are calling as a healthcare professional following up on a patient monitoring alert
+- Explain that you just completed a wellness check with their family member
+- Share your professional assessment of their mental state in appropriate terms
+- Provide specific recommendations for family support and next steps
+- Be compassionate but direct about the level of concern
+
+CONVERSATION GUIDELINES:
+- Start by identifying yourself and explaining the reason for the call
+- Ask about the family member's relationship to the patient
+- Share assessment results appropriately (respect patient privacy but emphasize safety concerns)
+- Provide clear, actionable recommendations for family involvement
+- Offer resources and next steps for professional care if needed
+
+Keep responses professional, clear, and supportive (2-3 sentences max per response).`;
+};
+
 // --- Get LLM response ---
 async function getLLMResponse(convo, callSid) {
     console.log(`[${callSid}] Sending prompt to LLM with conversation history:`, convo);
@@ -747,6 +518,30 @@ async function getLLMResponse(convo, callSid) {
     } catch (error) {
         console.error(`[${callSid}] LLM Error:`, error);
         return "I understand you're speaking with me. Could you please repeat what you just said?";
+    }
+}
+
+// --- NEW: Get family LLM response ---
+async function getFamilyLLMResponse(convo, callSid, patientEmotionalState) {
+    console.log(`[${callSid}] Sending family notification prompt to LLM`);
+    
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent([
+            getFamilySystemPrompt(
+                callContext?.patientName || "the patient", 
+                patientEmotionalState, 
+                callContext?.vitalsContext?.concernText
+            ),
+            ...convo.map(msg => msg.content).join('\n')
+        ]);
+        
+        const reply = result.response.text();
+        console.log(`[${callSid}] Family LLM replied: ${reply}`);
+        return reply;
+    } catch (error) {
+        console.error(`[${callSid}] Family LLM Error:`, error);
+        return "I'm calling to discuss your family member's wellness check. Could you please repeat what you just said?";
     }
 }
 
@@ -778,16 +573,55 @@ POSITIVE`;
     }
 }
 
+// --- NEW: Initiate family notification call ---
+async function initiatesFamilyCall(patientEmotionalState, familyNumber) {
+    if (!familyNumber) {
+        console.log("[Family Call] No family number provided, skipping family notification");
+        return;
+    }
+
+    try {
+        console.log(`[Family Call] Initiating call to family member: ${familyNumber}`);
+        const call = await client.calls.create({
+            url: `${process.env.PUBLIC_URL}/family-voice`,
+            from: process.env.TWILIO_NUMBER,
+            to: familyNumber
+        });
+        
+        console.log(`[Family Call] Family notification call initiated. SID: ${call.sid}, State: ${patientEmotionalState}`);
+        
+        // Store the patient's emotional state for this family call
+        if (!familyConversations[call.sid]) {
+            familyConversations[call.sid] = {
+                patientEmotionalState: patientEmotionalState,
+                conversation: []
+            };
+        }
+        
+        return call.sid;
+    } catch (error) {
+        console.error("[Family Call] Error initiating family call:", error);
+    }
+}
+
 // --- Start therapeutic call ---
 app.post("/start-therapeutic-call", express.json(), (req, res) => {
-    const { vitalData, alertType, phoneNumber } = req.body;
+    const { vitalData, alertType, phoneNumber, familyNumber, patientName } = req.body; // Added familyNumber and patientName
     if (!vitalData || !alertType) return res.status(400).json({ error: "Missing fields" });
 
     const vitalsContext = generateVitalsContext(vitalData, alertType);
-    callContext = { vitalData, alertType, vitalsContext, phoneNumber, status: 'initiated' };
+    callContext = { 
+        vitalData, 
+        alertType, 
+        vitalsContext, 
+        phoneNumber, 
+        familyNumber, // Store family number
+        patientName, // Store patient name
+        status: 'initiated' 
+    };
     callResult = { status: 'initiated', outcome: null, finalState: null };
 
-    console.log(`[Therapeutic Call Started] Vitals: ${JSON.stringify(vitalsContext)}, Phone: ${phoneNumber}`);
+    console.log(`[Therapeutic Call Started] Vitals: ${JSON.stringify(vitalsContext)}, Phone: ${phoneNumber}, Family: ${familyNumber}`);
     res.json({ success: true, vitalsContext: vitalsContext.concernText });
 });
 
@@ -811,6 +645,42 @@ app.post("/voice", (req, res) => {
             <Say voice="Polly.Joanna">Please tell me how you're doing today.</Say>
         </Gather>
         <Redirect>/voice-timeout</Redirect>
+    </Response>`;
+    
+    res.type("text/xml").send(twiml);
+});
+
+// --- NEW: Family voice webhook ---
+app.post("/family-voice", (req, res) => {
+    const callSid = req.body.CallSid;
+    console.log(`[Family Voice Webhook] Family call incoming. SID: ${callSid}`);
+    
+    // Initialize family conversation for this call
+    if (!familyConversations[callSid]) {
+        familyConversations[callSid] = {
+            patientEmotionalState: "UNKNOWN",
+            conversation: []
+        };
+    }
+    
+    const patientState = familyConversations[callSid].patientEmotionalState;
+    let urgencyMessage = "";
+    
+    if (patientState === "SEVERELY_DEPRESSED") {
+        urgencyMessage = "This is an urgent call regarding your family member's mental health status.";
+    } else if (patientState === "MILDLY_DEPRESSED") {
+        urgencyMessage = "I'm calling with some concerns about your family member's current wellbeing.";
+    }
+    
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Say voice="Polly.Joanna">
+            Hello, this is Dr. Sarah, a licensed therapist. ${urgencyMessage} I just completed a wellness check with your family member and need to discuss my findings with you.
+        </Say>
+        <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST">
+            <Say voice="Polly.Joanna">Could you please tell me your relationship to the patient?</Say>
+        </Gather>
+        <Redirect>/family-voice-timeout</Redirect>
     </Response>`;
     
     res.type("text/xml").send(twiml);
@@ -861,6 +731,13 @@ app.post("/process-speech", express.urlencoded({extended: false}), async (req, r
                 <Hangup/>
             </Response>`;
             
+            // NEW: Initiate family call before ending patient call
+            const finalEmotionalState = emotionalState[callSid];
+            if ((finalEmotionalState === "SEVERELY_DEPRESSED" || finalEmotionalState === "MILDLY_DEPRESSED") && callContext?.familyNumber) {
+                console.log(`[${callSid}] Patient call ending with concerning state: ${finalEmotionalState}. Initiating family call.`);
+                await initiatesFamilyCall(finalEmotionalState, callContext.familyNumber);
+            }
+            
             // End the call and cleanup
             endCall(callSid);
             return res.type("text/xml").send(twiml);
@@ -876,6 +753,12 @@ app.post("/process-speech", express.urlencoded({extended: false}), async (req, r
                 <Say voice="Polly.Joanna">I'm concerned about what you've shared. Please consider calling 988, the Suicide and Crisis Lifeline, or go to your nearest emergency room. You don't have to go through this alone.</Say>
                 <Hangup/>
             </Response>`;
+            
+            // NEW: Immediately initiate urgent family call for severe cases
+            if (callContext?.familyNumber) {
+                console.log(`[${callSid}] Emergency detected. Initiating urgent family call.`);
+                await initiatesFamilyCall("SEVERELY_DEPRESSED", callContext.familyNumber);
+            }
             
             endCall(callSid);
             return res.type("text/xml").send(twiml);
@@ -905,6 +788,84 @@ app.post("/process-speech", express.urlencoded({extended: false}), async (req, r
     }
 });
 
+// --- NEW: Process family speech input ---
+app.post("/process-family-speech", express.urlencoded({extended: false}), async (req, res) => {
+    const speechResult = req.body.SpeechResult || "";
+    const callSid = req.body.CallSid;
+    
+    console.log(`[Process Family Speech] Call: ${callSid}, Speech: "${speechResult}"`);
+    
+    if (!speechResult.trim()) {
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">I didn't catch that. Could you please tell me your relationship to the patient?</Say>
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST">
+            </Gather>
+            <Redirect>/family-voice-timeout</Redirect>
+        </Response>`;
+        return res.type("text/xml").send(twiml);
+    }
+    
+    try {
+        // Initialize family conversation if it doesn't exist
+        if (!familyConversations[callSid]) {
+            familyConversations[callSid] = {
+                patientEmotionalState: "UNKNOWN",
+                conversation: []
+            };
+        }
+        
+        // Add family member's message and get AI response
+        familyConversations[callSid].conversation.push({ role: "user", content: speechResult });
+        const aiResponse = await getFamilyLLMResponse(
+            familyConversations[callSid].conversation, 
+            callSid, 
+            familyConversations[callSid].patientEmotionalState
+        );
+        familyConversations[callSid].conversation.push({ role: "assistant", content: aiResponse });
+        
+        console.log(`[Process Family Speech] AI Response: "${aiResponse}"`);
+        
+        // Check conversation length - end family calls after reasonable discussion
+        const conversationLength = familyConversations[callSid].conversation.length;
+        
+        if (conversationLength >= 8) {
+            const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+            <Response>
+                <Say voice="Polly.Joanna">${aiResponse}</Say>
+                <Say voice="Polly.Joanna">Thank you for taking the time to speak with me. Please follow up with the recommendations we discussed, and don't hesitate to contact professional services if you need immediate assistance. Goodbye.</Say>
+                <Hangup/>
+            </Response>`;
+            
+            // Cleanup family conversation
+            delete familyConversations[callSid];
+            return res.type("text/xml").send(twiml);
+        }
+        
+        // Continue family conversation
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">${aiResponse}</Say>
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST">
+            </Gather>
+            <Redirect>/family-voice-timeout</Redirect>
+        </Response>`;
+        
+        res.type("text/xml").send(twiml);
+        
+    } catch (error) {
+        console.error(`[Process Family Speech] Error:`, error);
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">I'm having trouble processing that. Let me try again - what is your relationship to the patient?</Say>
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST">
+            </Gather>
+            <Redirect>/family-voice-timeout</Redirect>
+        </Response>`;
+        res.type("text/xml").send(twiml);
+    }
+});
+
 // --- Handle timeout ---
 app.post("/voice-timeout", (req, res) => {
     const callSid = req.body.CallSid;
@@ -925,6 +886,22 @@ app.post("/voice-timeout", (req, res) => {
         endCall(callSid);
     }
     
+    res.type("text/xml").send(twiml);
+});
+
+// --- NEW: Handle family timeout ---
+app.post("/family-voice-timeout", (req, res) => {
+    const callSid = req.body.CallSid;
+    console.log(`[Family Voice Timeout] Family member didn't respond. Call: ${callSid}`);
+    
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Say voice="Polly.Joanna">I haven't heard from you. This is regarding your family member's mental health status. Please call back when you're available to discuss this important matter.</Say>
+        <Hangup/>
+    </Response>`;
+    
+    // Cleanup family conversation
+    delete familyConversations[callSid];
     res.type("text/xml").send(twiml);
 });
 
@@ -978,6 +955,7 @@ app.get("/health", (req, res) => {
         status: "healthy", 
         callResult,
         activeConversations: Object.keys(conversations).length,
+        activeFamilyConversations: Object.keys(familyConversations).length, // NEW
         callContext: callContext ? { status: callContext.status } : null,
         timestamp: new Date().toISOString()
     });
@@ -987,6 +965,7 @@ app.get("/health", (req, res) => {
 app.get("/debug", (req, res) => {
     res.json({
         conversations: conversations,
+        familyConversations: familyConversations, // NEW
         emotionalState: emotionalState,
         callContext: callContext,
         callResult: callResult,
@@ -1015,6 +994,8 @@ app.get("/test-vital-alert", (req, res) => {
         alertType: "high_alert", 
         vitalsContext, 
         phoneNumber: process.env.USER_NUMBER, 
+        familyNumber: process.env.FAMILY_NUMBER, // NEW: Add family number to test
+        patientName: "Test Patient", // NEW
         status: 'initiated' 
     };
     callResult = { status: 'initiated', outcome: null, finalState: null };
@@ -1026,13 +1007,65 @@ app.get("/test-vital-alert", (req, res) => {
     });
 });
 
+// --- NEW: Test endpoint to simulate family call ---
+app.get("/test-family-call", async (req, res) => {
+    const { familyNumber, patientEmotionalState, patientName } = req.query;
+    
+    if (!familyNumber) {
+        return res.status(400).json({ 
+            error: "Missing familyNumber parameter", 
+            example: "/test-family-call?familyNumber=+1234567890&patientEmotionalState=SEVERELY_DEPRESSED&patientName=John Doe"
+        });
+    }
+    
+    // Set up test context for family call
+    const testEmotionalState = patientEmotionalState || "MILDLY_DEPRESSED";
+    const testPatientName = patientName || "Test Patient";
+    
+    callContext = {
+        patientName: testPatientName,
+        vitalsContext: { concernText: "elevated heart rate and low oxygen saturation" },
+        familyNumber: familyNumber,
+        status: 'family_test'
+    };
+    
+    try {
+        const callSid = await initiatesFamilyCall(testEmotionalState, familyNumber);
+        
+        res.json({
+            success: true,
+            message: "Family test call initiated",
+            callSid: callSid,
+            familyNumber: familyNumber,
+            patientEmotionalState: testEmotionalState,
+            patientName: testPatientName,
+            instructions: "The family member will receive a call from Dr. Sarah explaining the patient's current mental health status."
+        });
+    } catch (error) {
+        console.error("[Test Family Call] Error:", error);
+        res.status(500).json({ 
+            error: "Failed to initiate family test call", 
+            details: error.message 
+        });
+    }
+});
+
 // --- Trigger call with vital data ---
 app.post("/trigger-therapeutic-call", express.json(), async (req, res) => {
-    const { phoneNumber } = req.body;
+    const { phoneNumber, familyNumber, patientName } = req.body; // NEW: Added familyNumber and patientName
     const targetNumber = phoneNumber || process.env.USER_NUMBER;
     
     if (!targetNumber) {
         return res.status(400).json({ error: "No phone number provided" });
+    }
+    
+    // Store family info in call context if provided
+    if (familyNumber) {
+        callContext = { 
+            ...callContext, 
+            familyNumber: familyNumber,
+            patientName: patientName || "Patient"
+        };
     }
     
     try {
@@ -1042,11 +1075,12 @@ app.post("/trigger-therapeutic-call", express.json(), async (req, res) => {
             to: targetNumber
         });
         
-        console.log(`[Trigger Therapeutic Call] Call initiated to ${targetNumber}. SID: ${call.sid}`);
+        console.log(`[Trigger Therapeutic Call] Call initiated to ${targetNumber}. SID: ${call.sid}, Family: ${familyNumber}`);
         res.json({ 
             success: true, 
             callSid: call.sid, 
             phoneNumber: targetNumber,
+            familyNumber: familyNumber,
             message: "Therapeutic call initiated"
         });
     } catch (err) {
@@ -1058,10 +1092,12 @@ app.post("/trigger-therapeutic-call", express.json(), async (req, res) => {
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Twilio voice webhook ready at /voice`);
+    console.log(`Twilio family voice webhook ready at /family-voice`); // NEW
     console.log(`Environment check:`);
     console.log(`- PUBLIC_URL: ${process.env.PUBLIC_URL}`);
     console.log(`- TWILIO_NUMBER: ${process.env.TWILIO_NUMBER}`);
     console.log(`- USER_NUMBER: ${process.env.USER_NUMBER}`);
+    console.log(`- FAMILY_NUMBER: ${process.env.FAMILY_NUMBER || 'Not Set'}`); // NEW
     console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'Set' : 'Not Set'}`);
     console.log(`- TWILIO_ACCOUNT_SID: ${process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Not Set'}`);
     console.log(`- TWILIO_AUTH_TOKEN: ${process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'}`);
