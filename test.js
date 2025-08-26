@@ -404,7 +404,6 @@
 //     console.log(`- TWILIO_AUTH_TOKEN: ${process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'}`);
 // });
 
-
 import express from 'express';
 import http from 'http';
 import dotenv from 'dotenv';
@@ -498,6 +497,33 @@ CONVERSATION GUIDELINES:
 Keep responses professional, clear, and supportive (2-3 sentences max per response).`;
 };
 
+// --- NEW: Build ambulance notification system prompt ---
+const getAmbulanceSystemPrompt = (patientName, patientAddress, vitalsContext, emergencyDetails) => {
+    return `You are Dr. Sarah, a licensed medical professional making an emergency dispatch call to ambulance services for a patient in critical condition.
+
+PATIENT EMERGENCY INFORMATION:
+- Patient Name: ${patientName || "Unknown patient"}
+- Patient Address: ${patientAddress || "Address not provided"}
+- Critical Vital Signs: ${vitalsContext || "severe vital sign abnormalities"}
+- Emergency Details: ${emergencyDetails || "patient monitoring system detected critical health emergency"}
+
+EMERGENCY DISPATCH PROTOCOL:
+- You are calling 911/ambulance services to request immediate medical assistance
+- Provide clear, concise medical information about the patient's critical condition
+- State the exact address where ambulance services are needed
+- Emphasize the urgency based on vital sign readings
+- Provide your medical credentials and explain this is from a patient monitoring system
+- Give specific vital sign values that triggered the emergency alert
+
+COMMUNICATION STYLE:
+- Be professional, urgent, and direct
+- Speak clearly and provide all critical information quickly
+- Use medical terminology appropriately
+- Ensure ambulance dispatch has all necessary information for immediate response
+
+This is a one-way emergency notification call. Provide all critical information in a single comprehensive message.`;
+};
+
 // --- Get LLM response ---
 async function getLLMResponse(convo, callSid) {
     console.log(`[${callSid}] Sending prompt to LLM with conversation history:`, convo);
@@ -542,6 +568,25 @@ async function getFamilyLLMResponse(convo, callSid, patientEmotionalState) {
     } catch (error) {
         console.error(`[${callSid}] Family LLM Error:`, error);
         return "I'm calling to discuss your family member's wellness check. Could you please repeat what you just said?";
+    }
+}
+
+// --- NEW: Get ambulance LLM response ---
+async function getAmbulanceLLMResponse(patientName, patientAddress, vitalsContext, emergencyDetails) {
+    console.log(`[Ambulance Call] Generating emergency dispatch message`);
+    
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent([
+            getAmbulanceSystemPrompt(patientName, patientAddress, vitalsContext, emergencyDetails)
+        ]);
+        
+        const reply = result.response.text();
+        console.log(`[Ambulance Call] Emergency message generated: ${reply}`);
+        return reply;
+    } catch (error) {
+        console.error(`[Ambulance Call] LLM Error:`, error);
+        return `This is Dr. Sarah calling for emergency medical services. We have a patient at ${patientAddress || 'unknown address'} with critical vital signs requiring immediate ambulance dispatch. Patient name: ${patientName || 'Unknown'}. Critical condition detected by patient monitoring system.`;
     }
 }
 
@@ -601,6 +646,28 @@ async function initiatesFamilyCall(patientEmotionalState, familyNumber) {
         return call.sid;
     } catch (error) {
         console.error("[Family Call] Error initiating family call:", error);
+    }
+}
+
+// --- NEW: Initiate ambulance emergency call ---
+async function initiateAmbulanceCall(patientName, patientAddress, vitalsContext, emergencyDetails, ambulanceNumber) {
+    if (!ambulanceNumber) {
+        console.log("[Ambulance Call] No ambulance number provided, skipping ambulance call");
+        return;
+    }
+
+    try {
+        console.log(`[Ambulance Call] Initiating emergency call to: ${ambulanceNumber}`);
+        const call = await client.calls.create({
+            url: `${process.env.PUBLIC_URL}/ambulance-voice`,
+            from: process.env.TWILIO_NUMBER,
+            to: ambulanceNumber
+        });
+        
+        console.log(`[Ambulance Call] Emergency ambulance call initiated. SID: ${call.sid}`);
+        return call.sid;
+    } catch (error) {
+        console.error("[Ambulance Call] Error initiating ambulance call:", error);
     }
 }
 
@@ -684,6 +751,52 @@ app.post("/family-voice", (req, res) => {
     </Response>`;
     
     res.type("text/xml").send(twiml);
+});
+
+// --- NEW: Ambulance voice webhook (one-way call) ---
+app.post("/ambulance-voice", async (req, res) => {
+    const callSid = req.body.CallSid;
+    console.log(`[Ambulance Voice Webhook] Emergency call incoming. SID: ${callSid}`);
+    
+    try {
+        // Get emergency message from LLM
+        const emergencyMessage = await getAmbulanceLLMResponse(
+            callContext?.patientName || "Unknown Patient",
+            callContext?.patientAddress || process.env.PATIENT_ADDRESS || "Address not provided",
+            callContext?.vitalsContext?.concernText || "critical vital signs detected",
+            callContext?.emergencyDetails || "Patient monitoring system detected critical health emergency requiring immediate response"
+        );
+        
+        // One-way call - AI speaks, no gathering input
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">
+                ${emergencyMessage}
+            </Say>
+            <Pause length="2"/>
+            <Say voice="Polly.Joanna">
+                Please confirm ambulance dispatch to this address. This is an automated emergency call from a patient monitoring system. Thank you.
+            </Say>
+            <Hangup/>
+        </Response>`;
+        
+        console.log(`[Ambulance Voice Webhook] Emergency message delivered for call ${callSid}`);
+        res.type("text/xml").send(twiml);
+        
+    } catch (error) {
+        console.error(`[Ambulance Voice Webhook] Error:`, error);
+        
+        // Fallback emergency message
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Joanna">
+                This is Dr. Sarah calling for emergency medical services. We have a patient with critical vital signs requiring immediate ambulance dispatch. Patient monitoring system detected a medical emergency. Please send ambulance to the registered address immediately.
+            </Say>
+            <Hangup/>
+        </Response>`;
+        
+        res.type("text/xml").send(twiml);
+    }
 });
 
 // --- Process speech input ---
@@ -921,6 +1034,58 @@ app.get("/trigger-call", async (req, res) => {
     }
 });
 
+// --- NEW: Test endpoint for ambulance call ---
+app.get("/test-ambulance-call", async (req, res) => {
+    const { ambulanceNumber, patientName, patientAddress, emergencyDetails } = req.query;
+    
+    if (!ambulanceNumber) {
+        return res.status(400).json({ 
+            error: "Missing ambulanceNumber parameter", 
+            example: "/test-ambulance-call?ambulanceNumber=+1234567890&patientName=John Doe&patientAddress=123 Main St&emergencyDetails=Critical heart rate detected"
+        });
+    }
+    
+    // Set up test context for ambulance call
+    const testPatientName = patientName || "Test Patient";
+    const testPatientAddress = patientAddress || "123 Emergency Street, Test City";
+    const testEmergencyDetails = emergencyDetails || "Patient monitoring system detected critical vital signs requiring immediate medical attention";
+    
+    callContext = {
+        patientName: testPatientName,
+        patientAddress: testPatientAddress,
+        emergencyDetails: testEmergencyDetails,
+        vitalsContext: { concernText: "critical heart rate of 180 BPM and oxygen saturation below 85%" },
+        status: 'ambulance_test'
+    };
+    
+    try {
+        const callSid = await initiateAmbulanceCall(
+            testPatientName,
+            testPatientAddress,
+            callContext.vitalsContext.concernText,
+            testEmergencyDetails,
+            ambulanceNumber
+        );
+        
+        res.json({
+            success: true,
+            message: "Ambulance emergency call initiated",
+            callSid: callSid,
+            ambulanceNumber: ambulanceNumber,
+            patientName: testPatientName,
+            patientAddress: testPatientAddress,
+            emergencyDetails: testEmergencyDetails,
+            note: "This is a one-way call where Dr. Sarah will deliver emergency information to ambulance services without expecting a response."
+        });
+    } catch (error) {
+        console.error("[Test Ambulance Call] Error:", error);
+        res.status(500).json({ 
+            error: "Failed to initiate ambulance test call", 
+            details: error.message 
+        });
+    }
+});
+
 // --- End call and cleanup ---
 function endCall(callSid) {
     console.log(`[${callSid}] Ending call...`);
@@ -973,6 +1138,9 @@ app.get("/debug", (req, res) => {
             PUBLIC_URL: process.env.PUBLIC_URL,
             TWILIO_NUMBER: process.env.TWILIO_NUMBER,
             USER_NUMBER: process.env.USER_NUMBER,
+            FAMILY_NUMBER: process.env.FAMILY_NUMBER,
+            AMBULANCE_NUMBER: process.env.AMBULANCE_NUMBER, // NEW
+            PATIENT_ADDRESS: process.env.PATIENT_ADDRESS, // NEW
             GEMINI_API_KEY: process.env.GEMINI_API_KEY ? 'Set' : 'Not Set',
             TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Not Set',
             TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'
@@ -1093,11 +1261,14 @@ server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Twilio voice webhook ready at /voice`);
     console.log(`Twilio family voice webhook ready at /family-voice`); // NEW
+    console.log(`Twilio ambulance voice webhook ready at /ambulance-voice`); // NEW
     console.log(`Environment check:`);
     console.log(`- PUBLIC_URL: ${process.env.PUBLIC_URL}`);
     console.log(`- TWILIO_NUMBER: ${process.env.TWILIO_NUMBER}`);
     console.log(`- USER_NUMBER: ${process.env.USER_NUMBER}`);
     console.log(`- FAMILY_NUMBER: ${process.env.FAMILY_NUMBER || 'Not Set'}`); // NEW
+    console.log(`- AMBULANCE_NUMBER: ${process.env.AMBULANCE_NUMBER || 'Not Set'}`); // NEW
+    console.log(`- PATIENT_ADDRESS: ${process.env.PATIENT_ADDRESS || 'Not Set'}`); // NEW
     console.log(`- GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? 'Set' : 'Not Set'}`);
     console.log(`- TWILIO_ACCOUNT_SID: ${process.env.TWILIO_ACCOUNT_SID ? 'Set' : 'Not Set'}`);
     console.log(`- TWILIO_AUTH_TOKEN: ${process.env.TWILIO_AUTH_TOKEN ? 'Set' : 'Not Set'}`);
