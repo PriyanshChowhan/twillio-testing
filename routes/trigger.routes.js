@@ -2,16 +2,15 @@ import express from "express"
 const router = express.Router();
 import client from "../config.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-import {getSystemPrompt} from "../utils/prompts.js"
+import { getSystemPrompt, getSummaryPrompt } from "../utils/prompts.js"
 
 const conversations = {};
 const emotionalState = {};
 const callResults = {};
 const callContext = {};
+const summaries = {};
+
 
 router.get("/trigger-call", async (req, res) => {
   try {
@@ -29,6 +28,32 @@ router.get("/trigger-call", async (req, res) => {
   }
 });
 
+export async function generateSummary(callSid) {
+  const convo = conversations[callSid];
+  if (!callSid || !convo) {
+    console.error(`[Generate Summary] No conversation found for callSid: ${callSid}`);
+    return "No conversation data available for this call.";
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    console.log(`[Generate Summary] Generating summary for callSid: ${callSid}`);
+    const result = await model.generateContent([
+      getSummaryPrompt(convo.map(msg => msg.content).join("\n"))
+    ]);
+
+    const summaryText = result.response.text();
+    summaries[callSid] = { summary: summaryText };
+
+    console.log(`[Generate Summary] Summary generated and stored for callSid: ${callSid}`);
+    callResults[callSid].summary = summaryText;
+    return summaryText;
+  } catch (error) {
+    console.error(`[Generate Summary] Error generating summary for callSid ${callSid}:`, error);
+    return "Failed to generate conversation summary.";
+  }
+}
+
 router.get("/get-emotion/:callSid", (req, res) => {
   const callSid = req.params.callSid;
   const result = callResults[callSid];
@@ -41,8 +66,13 @@ router.get("/get-emotion/:callSid", (req, res) => {
     return res.json({ status: "in-progress" });
   }
 
-  res.json({ status: "completed", emotion: result.emotion });
+  res.json({
+    status: "completed",
+    emotion: result.emotion || result.finalState,
+    summary: result.summary || "User is very depressed"
+  });
 });
+
 
 router.post("/voice-timeout", (req, res) => {
   const callSid = req.body.CallSid;
@@ -65,7 +95,7 @@ router.post("/voice-timeout", (req, res) => {
   res.type("text/xml").send(twiml);
 });
 
-const emotionalStatePromises = {}; 
+const emotionalStatePromises = {};
 
 router.post("/process-speech", express.urlencoded({ extended: false }), async (req, res) => {
   const speechResult = req.body.SpeechResult || "";
@@ -87,10 +117,10 @@ router.post("/process-speech", express.urlencoded({ extended: false }), async (r
     }
 
     conversations[callSid].push({ role: "user", content: speechResult });
-    
+
     emotionalStatePromises[callSid] = getLLMResponse(conversations[callSid], callSid);
     const aiResponse = await emotionalStatePromises[callSid];
-    
+
     conversations[callSid].push({ role: "assistant", content: aiResponse });
 
     console.log(`[Process Speech] AI Response: "${aiResponse}"`);
@@ -143,7 +173,7 @@ router.post("/call-status", async (req, res) => {
 
   callResults[callSid] = {
     completed: true,
-    emotion: finalEmotion,
+    emotion: finalEmotion
   };
 
   res.status(200).send("OK");
@@ -165,7 +195,7 @@ export async function getLLMResponse(convo, callSid) {
 
     await updateEmotionalState(convo, callSid);
     console.log(`[${callSid}] Updated emotional state: ${emotionalState[callSid]}`);
-    
+
     return reply;
   } catch (error) {
     console.error(`[${callSid}] LLM Error:`, error);
@@ -216,28 +246,30 @@ POSITIVE`;
 }
 
 
-export function endCall(callSid) {
+export async function endCall(callSid) {
   console.log(`[${callSid}] Ending call...`);
 
   const finalState = emotionalState[callSid] || "NEUTRAL";
+
+  let summary = "Summary not generated.";
+  try {
+    summary = await generateSummary(callSid);
+  } catch (err) {
+    console.error(`[${callSid}] Failed to generate summary during endCall:`, err);
+  }
+
   callResults[callSid] = {
     status: 'completed',
     outcome: finalState,
     finalState,
+    summary,
     timestamp: new Date().toISOString(),
     conversationLength: conversations[callSid]?.length || 0
   };
 
-
-  delete conversations[callSid];
-  delete emotionalState[callSid];
-
-  if (callContext) {
-    callContext.status = 'completed';
-  }
-
   console.log(`[${callSid}] Call ended with outcome: ${finalState}`);
+  console.log(`[${callSid}] Summary: ${summary}`);
 }
 
 
-export default router
+export default router;

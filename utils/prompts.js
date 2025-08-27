@@ -76,3 +76,20 @@ COMMUNICATION STYLE:
 
 This is a one-way emergency notification call. Provide all critical information in a single comprehensive message.`;
 };
+
+export async function generateSummaryPrompt(conversationText) {
+  return  `You are a mental health professional. Please provide a concise summary of this therapy conversation session. Focus on:
+
+1. The patient's main concerns and emotional state
+2. Key topics discussed
+3. Any significant insights or breakthroughs
+4. Recommended follow-up actions or concerns
+5. Overall assessment of the patient's mental health status
+
+Keep the summary professional, empathetic, and under 200 words.
+
+Conversation:
+${conversationText}
+
+Summary:`
+};
