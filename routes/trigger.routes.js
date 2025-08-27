@@ -2,7 +2,6 @@ import express from "express"
 const router = express.Router();
 import client from "../config.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import updateEmotionalState from "../services/updateEmotionalState.js"
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
