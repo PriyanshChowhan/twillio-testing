@@ -3,7 +3,7 @@ const router = express.Router();
 import client from "../config.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-import { getSystemPrompt, getSummaryPrompt } from "../utils/prompts.js"
+import { getSystemPrompt, generateSummaryPrompt } from "../utils/prompts.js"
 
 const conversations = {};
 const emotionalState = {};
@@ -39,7 +39,7 @@ export async function generateSummary(callSid) {
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     console.log(`[Generate Summary] Generating summary for callSid: ${callSid}`);
     const result = await model.generateContent([
-      getSummaryPrompt(convo.map(msg => msg.content).join("\n"))
+      generateSummaryPrompt(convo.map(msg => msg.content).join("\n"))
     ]);
 
     const summaryText = result.response.text();
