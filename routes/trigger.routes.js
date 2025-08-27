@@ -1,10 +1,18 @@
 import express from "express"
 const router = express.Router();
 import client from "../config.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import updateEmotionalState from "../services/updateEmotionalState.js"
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+import getSystemPrompt from "../utils/prompts.js"
 
 const conversations = {};
 const emotionalState = {};
 const callResults = {};
+const callContext = {};
 
 router.get("/trigger-call", async (req, res) => {
   try {
@@ -137,21 +145,47 @@ router.post("/voice", (req, res) => {
     </Response>`);
 });
 
+
+export async function updateEmotionalState(convo, callSid) {
+  const lastUser = convo.filter(m => m.role === "user").pop();
+  if (!lastUser) return;
+
+  const prompt = `Given the user's response: "${lastUser.content}", 
+Respond with ONLY one of these options:
+SEVERELY_DEPRESSED
+MILDLY_DEPRESSED  
+NEUTRAL
+POSITIVE`;
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const result = await model.generateContent(prompt);
+    const state = result.response.text().trim();
+
+    if (["SEVERELY_DEPRESSED", "MILDLY_DEPRESSED", "NEUTRAL", "POSITIVE"].includes(state)) {
+      emotionalState[callSid] = state;
+    } else {
+      emotionalState[callSid] = "NEUTRAL";
+    }
+  } catch (error) {
+    console.error(`[${callSid}] Emotional state update error:`, error);
+    emotionalState[callSid] = "NEUTRAL";
+  }
+}
+
+
 export function endCall(callSid) {
   console.log(`[${callSid}] Ending call...`);
 
-  if (callContext && callContext.timer) {
-    clearTimeout(callContext.timer);
-  }
-
   const finalState = emotionalState[callSid] || "NEUTRAL";
-  callResult = {
+  callResults[callSid] = {
     status: 'completed',
     outcome: finalState,
     finalState,
     timestamp: new Date().toISOString(),
-    conversationLength: conversations[callSid] ? conversations[callSid].length : 0
+    conversationLength: conversations[callSid]?.length || 0
   };
+
 
   delete conversations[callSid];
   delete emotionalState[callSid];
