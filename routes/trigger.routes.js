@@ -171,9 +171,17 @@ router.post("/call-status", async (req, res) => {
   console.log(`[Call Status] Final emotional state: ${finalEmotion}`);
   console.log(`[Call Status] All emotional states:`, Object.keys(emotionalState).map(key => `${key}: ${emotionalState[key]}`));
 
+  let summary = "Summary not generated.";
+  try {
+    summary = await generateSummary(callSid);
+  } catch (err) {
+    console.error(`[${callSid}] Failed to generate summary during endCall:`, err);
+  }
+
   callResults[callSid] = {
     completed: true,
-    emotion: finalEmotion
+    emotion: finalEmotion,
+    summary: summary
   };
 
   res.status(200).send("OK");
