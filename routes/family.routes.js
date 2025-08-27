@@ -3,13 +3,10 @@ const router = express.Router();
 import client from "../config.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-import {getSystemPrompt, getFamilySystemPrompt} from "../utils/prompts.js"
+import { getFamilySystemPrompt} from "../utils/prompts.js"
 
 const familyConversations = {};
 const callContext = {};
-
-const conversations = {}; 
-
 
 export async function initiatesFamilyCall(patientEmotionalState, familyNumber) {
     if (!familyNumber) {
@@ -18,7 +15,6 @@ export async function initiatesFamilyCall(patientEmotionalState, familyNumber) {
     }
 
     try {
-        // force emotional state to SEVERELY_DEPRESSED
         patientEmotionalState = "SEVERELY_DEPRESSED";
 
         console.log(`[Family Call] Initiating call to family member: ${familyNumber}`);
@@ -77,7 +73,6 @@ router.post("/family-voice", (req, res) => {
     res.type("text/xml").send(twiml);
 });
 
-// Process family speech input
 router.post("/process-family-speech", express.urlencoded({ extended: false }), async (req, res) => {
     const speechResult = req.body.SpeechResult || "";
     const callSid = req.body.CallSid;
@@ -147,7 +142,6 @@ router.post("/process-family-speech", express.urlencoded({ extended: false }), a
     }
 });
 
-// Timeout if no speech
 router.post("/family-voice-timeout", (req, res) => {
     const callSid = req.body.CallSid;
     console.log(`[Family Voice Timeout] Family member didn't respond. Call: ${callSid}`);
@@ -162,7 +156,6 @@ router.post("/family-voice-timeout", (req, res) => {
     res.type("text/xml").send(twiml);
 });
 
-// Start a family call
 router.get("/family-call", async (req, res) => {
     const { familyNumber, patientName } = req.query;
 
@@ -180,7 +173,6 @@ router.get("/family-call", async (req, res) => {
     callContext.status = "family_test";
 
     try {
-        // Always treat as SEVERELY_DEPRESSED
         await initiatesFamilyCall("SEVERELY_DEPRESSED", familyNumber);
 
         res.json({
