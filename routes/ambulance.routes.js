@@ -127,5 +127,4 @@ export async function getAmbulanceLLMResponse(patientName, patientAddress, vital
         return `This is Dr. Sarah calling for emergency medical services. We have a patient at ${patientAddress || 'unknown address'} with critical vital signs requiring immediate ambulance dispatch. Patient name: ${patientName || 'Unknown'}. Critical condition detected by patient monitoring system.`;
     }
 }
-
 export default app;
