@@ -6,7 +6,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-import getSystemPrompt from "../utils/prompts.js"
+import {getSystemPrompt} from "../utils/prompts.js"
 
 const conversations = {};
 const emotionalState = {};
