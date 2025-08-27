@@ -68,10 +68,10 @@ router.post("/family-voice", (req, res) => {
         <Say voice="Polly.Joanna">
             Hello, this is Dr. Sarah, a licensed therapist. ${urgencyMessage} I just completed a wellness check with your family member and need to discuss my findings with you.
         </Say>
-        <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/family/process-family-speech" method="POST">
+        <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST">
             <Say voice="Polly.Joanna">Could you please tell me your relationship to the patient?</Say>
         </Gather>
-        <Redirect>/family/family-voice-timeout</Redirect>
+        <Redirect>/family-voice-timeout</Redirect>
     </Response>`;
 
     res.type("text/xml").send(twiml);
@@ -88,8 +88,8 @@ router.post("/process-family-speech", express.urlencoded({ extended: false }), a
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Say voice="Polly.Joanna">I didn't catch that. Could you please tell me your relationship to the patient?</Say>
-            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/family/process-family-speech" method="POST"></Gather>
-            <Redirect>/family/family-voice-timeout</Redirect>
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST"></Gather>
+            <Redirect>/family-voice-timeout</Redirect>
         </Response>`;
         return res.type("text/xml").send(twiml);
     }
@@ -129,8 +129,8 @@ router.post("/process-family-speech", express.urlencoded({ extended: false }), a
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Say voice="Polly.Joanna">${aiResponse}</Say>
-            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/family/process-family-speech" method="POST"></Gather>
-            <Redirect>/family/family-voice-timeout</Redirect>
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST"></Gather>
+            <Redirect>/family-voice-timeout</Redirect>
         </Response>`;
 
         res.type("text/xml").send(twiml);
@@ -140,8 +140,8 @@ router.post("/process-family-speech", express.urlencoded({ extended: false }), a
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Say voice="Polly.Joanna">I'm having trouble processing that. Let me try again - what is your relationship to the patient?</Say>
-            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/family/process-family-speech" method="POST"></Gather>
-            <Redirect>/family/family-voice-timeout</Redirect>
+            <Gather input="speech" timeout="15" speechTimeout="auto" language="en-US" action="/process-family-speech" method="POST"></Gather>
+            <Redirect>/family-voice-timeout</Redirect>
         </Response>`;
         res.type("text/xml").send(twiml);
     }
