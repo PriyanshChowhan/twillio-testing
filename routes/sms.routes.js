@@ -15,7 +15,7 @@ router.post("/send-sms", async (req, res) => {
     try {
         const sms = await client.messages.create({
             body: message,
-            from: process.env.USER_NUMBER,
+            from: process.env.TWILIO_NUMBER,
             to: phoneNumber
         });
 
