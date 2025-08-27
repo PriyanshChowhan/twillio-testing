@@ -36,6 +36,9 @@ export async function generateSummary(callSid) {
   }
 
   try {
+    if (!callResults[callSid]) {
+      callResults[callSid] = {};  
+    }
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     console.log(`[Generate Summary] Generating summary for callSid: ${callSid}`);
     const result = await model.generateContent([
