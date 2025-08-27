@@ -1,6 +1,9 @@
 import express from "express";
 const app = express();
 import client from "../config.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import {getAmbulanceSystemPrompt} from "../utils/prompts.js"
 
 const callContext = {};
 
@@ -83,7 +86,6 @@ app.get("/ambulance-call", async (req, res) => {
     callContext.patientAddress = testPatientAddress;
     callContext.emergencyDetails = testEmergencyDetails;
     callContext.vitalsContext = { concernText: "critical heart rate of 180 BPM and oxygen saturation below 85%" };
-    callContext.status = "ambulance_test";
 
     try {
         await initiateAmbulanceCall(
@@ -107,31 +109,6 @@ app.get("/ambulance-call", async (req, res) => {
     }
 });
 
-export function endCall(callSid) {
-    console.log(`[${callSid}] Ending call...`);
-
-    if (callContext && callContext.timer) {
-        clearTimeout(callContext.timer);
-    }
-
-    const finalState = emotionalState[callSid] || "NEUTRAL";
-    callResult = {
-        status: 'completed',
-        outcome: finalState,
-        finalState,
-        timestamp: new Date().toISOString(),
-        conversationLength: conversations[callSid] ? conversations[callSid].length : 0
-    };
-
-    delete conversations[callSid];
-    delete emotionalState[callSid];
-
-    if (callContext) {
-        callContext.status = 'completed';
-    }
-
-    console.log(`[${callSid}] Call ended with outcome: ${finalState}`);
-}
 
 export async function getAmbulanceLLMResponse(patientName, patientAddress, vitalsContext, emergencyDetails) {
     console.log(`[Ambulance Call] Generating emergency dispatch message`);
