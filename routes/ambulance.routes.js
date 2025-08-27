@@ -31,7 +31,7 @@ export async function initiateAmbulanceCall(patientName, patientAddress, vitalsC
 app.post("/ambulance-voice", async (req, res) => {
     const callSid = req.body.CallSid;
     console.log(`[Ambulance Voice Webhook] Emergency call incoming. SID: ${callSid}`);
-
+    
     try {
         const emergencyMessage = await getAmbulanceLLMResponse(
             callContext?.patientName || "Patient",
