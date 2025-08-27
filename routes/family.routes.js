@@ -1,9 +1,15 @@
 import express from "express";
 const router = express.Router();
 import client from "../config.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import {getSystemPrompt, getFamilySystemPrompt} from "../utils/prompts.js"
 
 const familyConversations = {};
 const callContext = {};
+
+const conversations = {}; 
+
 
 export async function initiatesFamilyCall(patientEmotionalState, familyNumber) {
     if (!familyNumber) {
@@ -12,6 +18,9 @@ export async function initiatesFamilyCall(patientEmotionalState, familyNumber) {
     }
 
     try {
+        // force emotional state to SEVERELY_DEPRESSED
+        patientEmotionalState = "SEVERELY_DEPRESSED";
+
         console.log(`[Family Call] Initiating call to family member: ${familyNumber}`);
         const call = await client.calls.create({
             url: `${process.env.PUBLIC_URL}/family-voice`,
@@ -40,7 +49,7 @@ router.post("/family-voice", (req, res) => {
 
     if (!familyConversations[callSid]) {
         familyConversations[callSid] = {
-            patientEmotionalState: "UNKNOWN",
+            patientEmotionalState: "SEVERELY_DEPRESSED",
             conversation: []
         };
     }
@@ -88,7 +97,7 @@ router.post("/process-family-speech", express.urlencoded({ extended: false }), a
     try {
         if (!familyConversations[callSid]) {
             familyConversations[callSid] = {
-                patientEmotionalState: "UNKNOWN",
+                patientEmotionalState: "SEVERELY_DEPRESSED",
                 conversation: []
             };
         }
@@ -155,7 +164,7 @@ router.post("/family-voice-timeout", (req, res) => {
 
 // Start a family call
 router.get("/family-call", async (req, res) => {
-    const { familyNumber, patientEmotionalState, patientName } = req.query;
+    const { familyNumber, patientName } = req.query;
 
     if (!familyNumber) {
         return res.status(400).json({
@@ -163,7 +172,6 @@ router.get("/family-call", async (req, res) => {
         });
     }
 
-    const testEmotionalState = patientEmotionalState || "MILDLY_DEPRESSED";
     const testPatientName = patientName || "Patient";
 
     callContext.patientName = testPatientName;
@@ -172,7 +180,8 @@ router.get("/family-call", async (req, res) => {
     callContext.status = "family_test";
 
     try {
-        await initiatesFamilyCall(testEmotionalState, familyNumber);
+        // Always treat as SEVERELY_DEPRESSED
+        await initiatesFamilyCall("SEVERELY_DEPRESSED", familyNumber);
 
         res.json({
             success: true,
@@ -194,23 +203,11 @@ export function endCall(callSid) {
         clearTimeout(callContext.timer);
     }
 
-    const finalState = emotionalState[callSid] || "NEUTRAL";
-    callResult = {
-        status: 'completed',
-        outcome: finalState,
-        finalState,
-        timestamp: new Date().toISOString(),
-        conversationLength: conversations[callSid] ? conversations[callSid].length : 0
-    };
-
-    delete conversations[callSid];
-    delete emotionalState[callSid];
-
     if (callContext) {
         callContext.status = 'completed';
     }
 
-    console.log(`[${callSid}] Call ended with outcome: ${finalState}`);
+    console.log(`[${callSid}] Call ended`);
 }
 
 
