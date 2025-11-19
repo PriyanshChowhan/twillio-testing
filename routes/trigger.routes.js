@@ -502,27 +502,53 @@ router.post("/process-speech", express.urlencoded({ extended: false }), async (r
 // });
 
 
+// export async function getLLMResponse(convo, callSid) {
+//   console.log(`[${callSid}] Sending prompt to LLM with conversation history:`, convo);
+
+//   try {
+//     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+//     const result = await model.generateContent([
+//       getSystemPrompt(callContext, emotionalState[callSid]),
+//       ...convo.map(msg => msg.content).join('\n')
+//     ]);
+
+//     const reply = result.response.text();
+//     console.log(`[${callSid}] LLM replied: ${reply}`);
+
+//     await updateEmotionalState(convo, callSid);
+//     console.log(`[${callSid}] Updated emotional state: ${emotionalState[callSid]}`);
+
+//     return reply;
+//   } catch (error) {
+//     console.error(`[${callSid}] LLM Error:`, error);
+//     return "I understand you're speaking with me. Could you please repeat what you just said?";
+//   }
+// }
+
 export async function getLLMResponse(convo, callSid) {
-  console.log(`[${callSid}] Sending prompt to LLM with conversation history:`, convo);
+    console.log(`[${callSid}] Sending prompt to LLM with conversation history:`, convo);
 
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    const result = await model.generateContent([
-      getSystemPrompt(callContext, emotionalState[callSid]),
-      ...convo.map(msg => msg.content).join('\n')
-    ]);
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const result = await model.generateContent([
+            getSystemPrompt(callContext, emotionalState[callSid]),
+            ...convo.map(msg => msg.content).join('\n')
+        ]);
 
-    const reply = result.response.text();
-    console.log(`[${callSid}] LLM replied: ${reply}`);
+        const reply = result.response.text();
+        console.log(`[${callSid}] LLM replied: ${reply}`);
 
-    await updateEmotionalState(convo, callSid);
-    console.log(`[${callSid}] Updated emotional state: ${emotionalState[callSid]}`);
+        // Add 1-second delay before the next API call
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        await updateEmotionalState(convo, callSid);
+        console.log(`[${callSid}] Updated emotional state: ${emotionalState[callSid]}`);
 
-    return reply;
-  } catch (error) {
-    console.error(`[${callSid}] LLM Error:`, error);
-    return "I understand you're speaking with me. Could you please repeat what you just said?";
-  }
+        return reply;
+    } catch (error) {
+        console.error(`[${callSid}] LLM Error:`, error);
+        return "I understand you're speaking with me. Could you please repeat what you just said?";
+    }
 }
 
 router.post("/voice", (req, res) => {
