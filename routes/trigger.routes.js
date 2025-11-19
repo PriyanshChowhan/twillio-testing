@@ -1118,5 +1118,5 @@ router.post("/generate-final-emotion/:callSid", async (req, res) => {
     return res.status(500).json({ error: "Failed to generate final emotion", details: err?.message });
   }
 });
-
+export { callResults };
 export default router;

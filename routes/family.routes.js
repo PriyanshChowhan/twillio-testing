@@ -236,6 +236,7 @@ import client from "../config.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 import { getFamilySystemPrompt} from "../utils/prompts.js"
+import { callResults } from "./trigger.routes.js";
 
 const familyConversations = {};
 const callContext = {};
