@@ -60,7 +60,7 @@ app.post("/ambulance-voice", async (req, res) => {
         const twiml = `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
             <Say voice="Polly.Joanna">
-                This is Dr. Sarah calling for emergency medical services. We have a patient with critical vital signs requiring immediate ambulance dispatch. Patient monitoring system detected a medical emergency. Please send ambulance to the registered address immediately.
+                This is Dr. Anaya calling for emergency medical services. We have a patient with critical vital signs requiring immediate ambulance dispatch. Patient monitoring system detected a medical emergency. Please send ambulance to the registered address immediately.
             </Say>
             <Hangup/>
         </Response>`;
@@ -124,7 +124,7 @@ export async function getAmbulanceLLMResponse(patientName, patientAddress, vital
         return reply;
     } catch (error) {
         console.error(`[Ambulance Call] LLM Error:`, error);
-        return `This is Dr. Sarah calling for emergency medical services. We have a patient at ${patientAddress || 'unknown address'} with critical vital signs requiring immediate ambulance dispatch. Patient name: ${patientName || 'Unknown'}. Critical condition detected by patient monitoring system.`;
+        return `This is Dr. Anaya calling for emergency medical services. We have a patient at ${patientAddress || 'unknown address'} with critical vital signs requiring immediate ambulance dispatch. Patient name: ${patientName || 'Unknown'}. Critical condition detected by patient monitoring system.`;
     }
 }
 export default app;
