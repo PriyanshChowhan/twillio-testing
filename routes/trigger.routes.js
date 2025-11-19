@@ -531,9 +531,10 @@ export async function getLLMResponse(convo, callSid) {
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const result = await model.generateContent([
-            getSystemPrompt(callContext, emotionalState[callSid]),
-            ...convo.map(msg => msg.content).join('\n')
-        ]);
+        getSystemPrompt(callContext, emotionalState[callSid]),
+        convo.map(msg => msg.content).join('\n')
+      ]
+      );
 
         const reply = result.response.text();
         console.log(`[${callSid}] LLM replied: ${reply}`);
